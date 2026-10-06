@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#eeeee6">
+  <title>Serenity · 声形之间</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23242c26'/%3E%3Ccircle cx='16' cy='16' r='10' fill='none' stroke='%23dbddb7'/%3E%3Ccircle cx='16' cy='16' r='5' fill='none' stroke='%23dbddb7'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="masthead">
+    <a class="brand" href="./"><span class="brand-mark">◎</span> Serenity<span class="edition"><span data-i18n="edition">声形之间</span></span></a>
+    <div class="header-right"><div class="language-switch" role="group" aria-label="Language / 语言"><button type="button" data-language="zh" lang="zh-CN" aria-label="中文" aria-pressed="true">中</button><span aria-hidden="true">/</span><button type="button" data-language="en" lang="en" aria-label="English" aria-pressed="false">EN</button></div><span class="web-edition">AN AUDIOVISUAL MEDITATION</span><button id="help" class="quiet"><span data-i18n="help">操作指南</span><span>?</span></button></div>
+  </header>
+  <main>
+    <div class="intro"><div><p class="eyebrow">A SMALL EXPERIMENT IN STILLNESS</p><h1><span data-i18n="headline">种下一道波，听见它的形状。</span></h1></div></div>
+    <div class="workspace">
+      <section class="visual-panel" data-i18n-aria="scene" aria-label="声画场景">
+        <div class="stage-heading"><span><i id="live-dot"></i> <span id="play-state">等待开始</span></span><span>FIELD STUDY <b>001</b></span></div>
+        <div class="stage" id="stage">
+          <canvas id="field" width="1440" height="900" tabindex="0" data-i18n-aria="canvas" aria-label="波场画布。点击定位，双击种植；也可用 WASD 移动，J 种圆形场，K 种螺旋场。"></canvas>
+          <div id="welcome" class="welcome">
+            <div class="orbit" aria-hidden="true"><span></span><span></span><span></span></div>
+            <p class="eyebrow">SOUND EMERGES FROM FORM</p><h2>Serenity</h2>
+            <button id="begin" class="primary"><span data-i18n="begin">开始探索</span><span>↗</span></button>
+            <button id="welcome-demo" class="text-button"><span data-i18n="demoIntro">或先听一段示例</span></button>
+            <small><span data-i18n="audioHint">点击开启声音 · 建议以较低音量聆听</span></small>
+          </div>
+          <div id="pause-overlay" class="pause-overlay" hidden><span data-i18n="pauseTitle">时间停在这里</span><small><span data-i18n="pauseHint">按空格继续</span></small></div>
+        </div>
+        <div class="stage-footer"><span><span data-i18n="position">位置</span><b id="position">119, 69</b></span><span><span data-i18n="circle">圆形</span><b id="circle-count">00</b> <em>/</em><span data-i18n="spiral">螺旋</span><b id="spiral-count">00</b></span><span id="elapsed">00:00</span></div>
+        <div class="transport"><div><button id="pause" class="quiet" disabled>Ⅱ 暂停</button><button id="reset" class="quiet"><span data-i18n="reset">↺ 清空</span></button></div><span class="canvas-hint">点击定位 · 双击种植</span><button id="demo" class="quiet"><span data-i18n="demo">载入示例 ↗</span></button></div>
+      </section>
+      <aside class="controls" data-i18n-aria="controls" aria-label="波场与声音控制">
+        <section class="control-section"><p class="section-label"><span>01</span><span data-i18n="plantSection">种下场源</span></p>
+          <div class="field-types"><button class="type active" data-type="circle" aria-pressed="true"><span class="field-icon">◎</span><span data-i18n="circleField">圆形波场</span><kbd>J</kbd></button><button class="type" data-type="spiral" aria-pressed="false"><span class="field-icon">۞</span><span data-i18n="spiralField">螺旋波场</span><kbd>K</kbd></button></div>
+          <button id="plant" class="plant-button">＋ 在此处种下</button>
+          <p id="selection" class="microcopy">在画面中选择一个位置。</p>
+        </section>
+        <section class="control-section"><p class="section-label"><span>02</span><span data-i18n="waveSection">调整波形</span></p>
+          <label class="slider-label" for="amplitude"><span data-i18n="amplitude">振幅</span><output id="amplitude-value">1</output></label><input id="amplitude" type="range" min="0" max="6" step="1" value="1"><div class="range-labels"><span><span data-i18n="calm">平静</span></span><span><span data-i18n="intense">强烈</span></span></div>
+          <label class="slider-label frequency-label" for="frequency"><span data-i18n="frequency">频率</span><output id="frequency-value">0.25 Hz</output></label><input id="frequency" type="range" min="-1" max="1" step="0.05" value="0.25"><div class="range-labels"><span><span data-i18n="reverse">−1 反向</span></span><span><span data-i18n="still">0 静止</span></span><span><span data-i18n="forward">1 正向</span></span></div>
+          <p class="microcopy" id="parameter-hint">参数将用于下一颗场源。</p>
+        </section>
+        <section class="control-section sound-section"><p class="section-label"><span>03</span><span data-i18n="soundSection">聆听画面</span></p>
+          <div class="sound-modes"><button data-mode="cluster" class="active" aria-pressed="true"><span data-i18n="cluster">十二音音簇</span></button><button data-mode="average" aria-pressed="false"><span data-i18n="average">微分音</span></button></div>
+          <div id="spectrum" class="spectrum" data-i18n-aria="spectrum" aria-label="画面高度分布映射的十二音强度"></div>
+          <p class="microcopy" id="mode-description">全部十二音按高度分布占比，叠加基音与泛音。</p>
+          <div class="volume-row"><button id="mute" class="quiet" aria-pressed="false">声音开</button><label class="sr-only" for="volume"><span data-i18n="volume">音量</span></label><input id="volume" type="range" min="0" max="100" value="25"></div>
+          <div class="sound-region">
+            <div class="region-actions"><button id="select-region" class="quiet" aria-pressed="false" disabled>框选取声</button><button id="clear-region" class="quiet" disabled><span data-i18n="clearRegion">恢复全局</span></button></div>
+            <p id="region-status" class="microcopy" role="status">取声范围：全局</p>
+          </div>
+        </section>
+        <p id="notice" class="notice" role="status" aria-live="polite"></p>
+      </aside>
+    </div>
+    <footer class="page-footer"><span><span data-i18n="footer">视觉生于波的叠加，声音取自画面的分布。</span></span><a href="https://github.com/LaiYutao/Serenity-a-game-of-audio-visual-meditation" target="_blank" rel="noopener noreferrer"><span data-i18n="credit">原作 / LaiYutao ↗</span></a></footer>
+  </main>
+  <dialog id="help-dialog"><div class="dialog-heading"><h2><span data-i18n="helpTitle">慢慢探索</span></h2><button id="close-help" class="quiet" data-i18n-aria="closeHelp" aria-label="关闭操作指南">✕</button></div><p><span data-i18n="helpIntro">点击画布移动种植点，再选择场源并点击「种下」。点击已有场源，可调整它的参数；变化会向四周传播。</span></p><dl><dt>W A S D</dt><dd><span data-i18n="helpMove">移动种植点</span></dd><dt>J / K</dt><dd><span data-i18n="helpPlant">种下圆形 / 螺旋场</span></dd><dt><span data-i18n="holdJ">按住 J + W / S</span></dt><dd><span data-i18n="helpAmplitude">调高 / 调低选中场源振幅</span></dd><dt><span data-i18n="holdK">按住 K + W / S</span></dt><dd><span data-i18n="helpFrequency">调高 / 调低选中场源频率</span></dd><dt>J + K</dt><dd><span data-i18n="helpMode">切换音乐模式</span></dd><dt>M</dt><dd><span data-i18n="helpMute">静音 / 取消静音</span></dd><dt><span data-i18n="space">空格</span></dt><dd><span data-i18n="helpPause">暂停 / 继续</span></dd><dt>R / X</dt><dd><span data-i18n="helpReset">清空 / 停止并回到开始页</span></dd></dl><p class="microcopy"><span data-i18n="helpNote">频率为零时保持静态形状，为负时反向变化。「微分音」沿用原作微分白噪音模式的加权频率正弦波算法。</span></p></dialog>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
