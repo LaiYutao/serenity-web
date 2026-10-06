@@ -71,7 +71,6 @@ function syncSelection(){
   if(field){amplitude=field.amplitude;frequency=field.frequency;selectType(field.type);}
   $('#amplitude').value=amplitude;$('#frequency').value=frequency;
   $('#amplitude-value').textContent=amplitude;$('#frequency-value').textContent=`${frequency.toFixed(2)} Hz`;
-  $('#selection').textContent=field?t('selected',{type:t(field.type),x:field.x,y:field.y}):t('choosePosition');
   $('#plant').textContent=t(field?'occupied':'plant');$('#plant').disabled=!!field;
   dirty=true;
 }

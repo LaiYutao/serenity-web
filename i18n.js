@@ -58,8 +58,6 @@ export const messages = {
   regionGlobal: ['取声范围：全局', 'Sound source: full canvas'],
   dragHint: ['拖动框选声音范围', 'Drag to select sound regions'],
   canvasHint: ['点击定位 · 双击种植', 'Click to position · Double-click to plant'],
-  selected: ['已选中{type}场源 · {x}, {y}', '{type} source selected · {x}, {y}'],
-  choosePosition: ['在画面中选择一个位置。', 'Choose a position on the canvas.'],
   occupied: ['此处已有场源', 'Source already here'],
   plant: ['＋ 在此处种下', '＋ Plant here'],
   waiting: ['等待开始', 'Ready'],
