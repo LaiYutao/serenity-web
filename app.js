@@ -45,9 +45,11 @@ const bars=NOTES.map((note,i)=>{
 // Cache the glyph rasterization; drawImage avoids 36,000 text layouts per frame.
 const atlas=document.createElement('canvas');atlas.width=13*6;atlas.height=6;
 const ink=atlas.getContext('2d');ink.font='7px monospace';ink.textBaseline='middle';ink.textAlign='center';
+const glyphShades=[118, 127, 136, 145, 154, 162, 171, 180, 189, 198, 207, 216, 225];
 for(let i=0;i<13;i++){
-  ink.fillStyle='#131c16';ink.fillRect(i*6,0,6,6);
-  ink.fillStyle=`rgb(${107+i*9},${123+i*9},${93+i*8})`;
+  ink.fillStyle='#1a1a1a';ink.fillRect(i*6,0,6,6);
+  const shade=glyphShades[i];
+  ink.fillStyle=`rgb(${shade},${shade},${shade})`;
   ink.fillText(GLYPHS[i],i*6+3,3.3);
 }
 
@@ -92,21 +94,21 @@ function draw(){
   context.imageSmoothingEnabled=false;
   for(let i=0;i<sim.bins.length;i++)context.drawImage(atlas,sim.bins[i]*6,0,6,6,(i%WIDTH)*6,Math.floor(i/WIDTH)*6,6,6);
   const px=Math.round(point.x)*6+3,py=Math.round(point.y)*6+3;
-  context.strokeStyle='#e9daa6';context.lineWidth=2;context.beginPath();
+  context.strokeStyle='#dadada';context.lineWidth=2;context.beginPath();
   context.moveTo(px-19,py);context.lineTo(px-8,py);context.moveTo(px+8,py);context.lineTo(px+19,py);
   context.moveTo(px,py-19);context.lineTo(px,py-8);context.moveTo(px,py+8);context.lineTo(px,py+19);context.stroke();
   const regions=currentRegions();
   if(regions.length){
     if(regionOverlayDirty){
       regionOverlayContext.clearRect(0,0,canvas.width,canvas.height);
-      regionOverlayContext.fillStyle='#08100a55';
+      regionOverlayContext.fillStyle='#0e0e0e55';
       regionOverlayContext.fillRect(0,0,canvas.width,canvas.height);
       // Clear the union of all rectangles, including overlaps and nested boxes.
       for(const region of regions)regionOverlayContext.clearRect(region.left*6,region.top*6,(region.right-region.left+1)*6,(region.bottom-region.top+1)*6);
       regionOverlayDirty=false;
     }
     context.drawImage(regionOverlay,0,0);
-    context.save();context.strokeStyle='#efe2a9';context.lineWidth=3;
+    context.save();context.strokeStyle='#e1e1e1';context.lineWidth=3;
     for(const region of regions){
       const x=region.left*6,y=region.top*6,w=(region.right-region.left+1)*6,h=(region.bottom-region.top+1)*6;
       context.setLineDash(region===regionDrag?.bounds?[10,6]:[]);
