@@ -2,7 +2,7 @@ export const messages = {
   title: ['Serenity · 声形之间', 'Serenity · Sound & Form'],
   edition: ['声形之间', 'Sound & Form'],
   help: ['操作指南', 'Guide'],
-  headline: ['种下一道波，听见它的形状。', 'Plant a wave. Hear its shape.'],
+  headline: ['声画合成器', 'Sound & form synthesizer'],
   scene: ['声画场景', 'Audiovisual scene'],
   canvas: ['波场画布。点击定位，双击种植；也可用 WASD 移动，J 种圆形场，K 种螺旋场。', 'Wave canvas. Click to position, double-click to plant. Use WASD to move, J for a circular field, K for a spiral field.'],
   begin: ['开始探索', 'Begin'],

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#ededed">
+  <meta name="theme-color" content="#e8e7e2">
   <title>Serenity · 声形之间</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a2a2a'/%3E%3Ccircle cx='16' cy='16' r='10' fill='none' stroke='%23dadada'/%3E%3Ccircle cx='16' cy='16' r='5' fill='none' stroke='%23dadada'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
@@ -11,18 +11,18 @@
 <body>
   <header class="masthead">
     <a class="brand" href="./"><span class="brand-mark">◎</span> Serenity<span class="edition"><span data-i18n="edition">声形之间</span></span></a>
-    <div class="header-right"><div class="language-switch" role="group" aria-label="Language / 语言"><button type="button" data-language="zh" lang="zh-CN" aria-label="中文" aria-pressed="true">中</button><span aria-hidden="true">/</span><button type="button" data-language="en" lang="en" aria-label="English" aria-pressed="false">EN</button></div><span class="web-edition">AN AUDIOVISUAL MEDITATION</span><button id="help" class="quiet"><span data-i18n="help">操作指南</span><span>?</span></button></div>
+    <div class="header-right"><div class="language-switch" role="group" aria-label="Language / 语言"><button type="button" data-language="zh" lang="zh-CN" aria-label="中文" aria-pressed="true">中</button><span aria-hidden="true">/</span><button type="button" data-language="en" lang="en" aria-label="English" aria-pressed="false">EN</button></div><span class="web-edition">S—01</span><button id="help" class="quiet"><span data-i18n="help">操作指南</span><span>?</span></button></div>
   </header>
   <main>
-    <div class="intro"><div><p class="eyebrow">A SMALL EXPERIMENT IN STILLNESS</p><h1><span data-i18n="headline">种下一道波，听见它的形状。</span></h1></div></div>
+    <div class="intro"><div><p class="eyebrow">SERENITY / S—01</p><h1><span data-i18n="headline">声画合成器</span></h1></div><div class="intro-grille" aria-hidden="true"></div></div>
     <div class="workspace">
       <section class="visual-panel" data-i18n-aria="scene" aria-label="声画场景">
-        <div class="stage-heading"><span><i id="live-dot"></i> <span id="play-state">等待开始</span></span><span>FIELD STUDY <b>001</b></span></div>
+        <div class="stage-heading"><span><i id="live-dot"></i> <span id="play-state">等待开始</span></span><span>WAVE FIELD <b>01</b></span></div>
         <div class="stage" id="stage">
           <canvas id="field" width="1440" height="900" tabindex="0" data-i18n-aria="canvas" aria-label="波场画布。点击定位，双击种植；也可用 WASD 移动，J 种圆形场，K 种螺旋场。"></canvas>
           <div id="welcome" class="welcome">
             <div class="orbit" aria-hidden="true"><span></span><span></span><span></span></div>
-            <p class="eyebrow">SOUND EMERGES FROM FORM</p><h2>Serenity</h2>
+            <p class="eyebrow">S—01 / AUDIOVISUAL SYNTHESIZER</p><h2>Serenity</h2>
             <button id="begin" class="primary"><span data-i18n="begin">开始探索</span><span>↗</span></button>
             <button id="welcome-demo" class="text-button"><span data-i18n="demoIntro">或先听一段示例</span></button>
             <small><span data-i18n="audioHint">点击开启声音 · 建议以较低音量聆听</span></small>
@@ -34,7 +34,7 @@
       </section>
       <aside class="controls" data-i18n-aria="controls" aria-label="波场与声音控制">
         <section class="control-section"><p class="section-label"><span>01</span><span data-i18n="plantSection">种下场源</span></p>
-          <div class="field-types"><button class="type active" data-type="circle" aria-pressed="true"><span class="field-icon">◎</span><span data-i18n="circleField">圆形波场</span><kbd>J</kbd></button><button class="type" data-type="spiral" aria-pressed="false"><span class="field-icon">۞</span><span data-i18n="spiralField">螺旋波场</span><kbd>K</kbd></button></div>
+          <div class="field-types"><button class="type active" data-type="circle" aria-pressed="true"><span class="field-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13"/><circle cx="16" cy="16" r="8"/><circle cx="16" cy="16" r="3"/></svg></span><span data-i18n="circleField">圆形波场</span><kbd>J</kbd></button><button class="type" data-type="spiral" aria-pressed="false"><span class="field-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 16c-2-2 1-5 4-3 5 3 0 10-5 8C6 18 11 6 19 7c12 1 13 19 0 22C4 33-5 13 5 4"/></svg></span><span data-i18n="spiralField">螺旋波场</span><kbd>K</kbd></button></div>
           <button id="plant" class="plant-button">＋ 在此处种下</button>
         </section>
         <section class="control-section"><p class="section-label"><span>02</span><span data-i18n="waveSection">调整波形</span></p>
