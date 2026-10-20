@@ -196,10 +196,10 @@ dialog{border:0;border-radius:6px;background:var(--panel);color:var(--ink);max-w
 .masthead{height:48px;max-width:none}
 .header-right button{width:32px;min-height:24px;height:24px;padding:3px 5px;font-size:11px}
 .header-right .icon{width:16px;height:16px}
-.instrument{max-width:none}
+.instrument{max-width:none;padding-bottom:8px}
 @media(min-width:761px){
- .instrument{padding-bottom:12px}
- .workspace{min-height:calc(100dvh - 60px);row-gap:8px}
+ .instrument{padding-bottom:8px}
+ .workspace{min-height:calc(100dvh - 56px);row-gap:8px}
  .visual-panel{align-self:stretch;display:flex;min-height:360px}
  .stage{flex:1;height:auto;min-height:0}
 }
