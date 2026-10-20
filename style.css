@@ -205,7 +205,13 @@ dialog{border:0;border-radius:6px;background:var(--panel);color:var(--ink);max-w
 }
 @media(max-width:760px){.masthead{height:44px}}
 
-.brand-lockup{display:flex;align-items:center;gap:10px;min-width:0}
-.brand-divider{font:400 20px/1 Arial,Helvetica,sans-serif;color:var(--ink)}
-.brand-credit{font:600 15px/1 Arial,Helvetica,sans-serif;letter-spacing:.18em;white-space:nowrap}
-@media(max-width:760px){.brand-lockup{gap:7px}.brand-credit{font-size:12px;letter-spacing:.14em}.brand-divider{font-size:17px}}
+.brand-lockup{display:flex;align-items:center;gap:22px;min-width:0}
+.brand-signature{display:flex;align-items:center;gap:10px;transform:translateY(2px)}
+.brand-divider{display:block;width:2px;height:24px;flex:none;background:var(--ink)}
+.credit-contact{position:relative;display:flex;align-items:center}
+.brand-credit{display:block;transform:translateY(2px);padding:0;border:0;border-radius:0;background:none;color:var(--ink);font:600 15px/1 Arial,Helvetica,sans-serif;letter-spacing:.1em;white-space:nowrap;cursor:copy}
+.contact-reveal{position:absolute;z-index:30;left:calc(100% + 14px);top:calc(50% + 2px);transform:translateY(-50%);display:flex;align-items:center;gap:12px;width:max-content;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .12s}
+.credit-email{font:600 12px/1.3 var(--mono);white-space:nowrap}
+.credit-contact:hover .contact-reveal,.credit-contact:has(.brand-credit:focus-visible) .contact-reveal,.credit-contact.copy-feedback .contact-reveal{opacity:1;visibility:visible}
+.copy-toast{border:2px solid var(--ink);border-radius:0;padding:5px 9px;background:var(--face);color:var(--ink);font:11px/1.3 Arial,Helvetica,sans-serif;white-space:nowrap}
+@media(max-width:760px){.brand-lockup{gap:15.4px}.brand-signature{gap:7px}.brand-credit{font-size:12px;letter-spacing:.08em}.brand-divider{height:20.4px}}

@@ -7,6 +7,7 @@ import { translate, readLanguage } from './i18n.js';
 
 const $=selector=>document.querySelector(selector);
 let language='zh', noticeKey='';
+let emailToastTimer=null,emailToastKey='';
 try{language=readLanguage(window.localStorage);}catch{}
 const t=(key,values)=>translate(language,key,values);
 const sim=new Simulation(), sound=new SoundEngine();
@@ -71,6 +72,7 @@ function applyLanguage(next){
   $('#mute').setAttribute('aria-label',t('masterMute'));
   drawWaveform();renderTracks();
   notify(noticeKey);
+  if(!$('#copy-toast').hidden)$('#copy-toast').textContent=t(emailToastKey);
 }
 function selected(){return sim.at(point.x,point.y);}
 function selectType(next){type=next;document.querySelectorAll('[data-type]').forEach(button=>{const active=button.dataset.type===type;button.classList.toggle('active',active);button.setAttribute('aria-pressed',active);});}
@@ -180,6 +182,26 @@ $('#select-region').onclick=()=>{
 };
 $('#clear-region').onclick=clearRegion;
 document.querySelectorAll('[data-language]').forEach(button=>button.onclick=()=>applyLanguage(button.dataset.language));
+function showEmailToast(key){
+  clearTimeout(emailToastTimer);emailToastKey=key;
+  const toast=$('#copy-toast');toast.textContent=t(key);toast.hidden=false;
+  $('.credit-contact').classList.add('copy-feedback');
+  emailToastTimer=setTimeout(()=>{toast.hidden=true;$('.credit-contact').classList.remove('copy-feedback');},2000);
+}
+$('#copy-email').onclick=async()=>{
+  const email=$('#credit-email').textContent;
+  try{
+    try{await navigator.clipboard.writeText(email);}
+    catch{
+      const input=document.createElement('textarea');input.value=email;input.readOnly=true;
+      input.style.cssText='position:fixed;left:-9999px;top:0';document.body.append(input);input.select();
+      let copied=false;
+      try{copied=document.execCommand('copy');}finally{input.remove();$('#copy-email').focus({preventScroll:true});}
+      if(!copied)throw new Error('copy');
+    }
+    showEmailToast('emailCopied');
+  }catch{showEmailToast('emailCopyFailed');}
+};
 function setSceneSpeed(value){
   advanceField();
   const rounded=Math.round(clamp(value,-4,4)*100)/100;

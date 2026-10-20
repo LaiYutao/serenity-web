@@ -1,4 +1,7 @@
 export const messages = {
+  copyEmail: ['复制 LETTER LAI 的邮箱', 'Copy LETTER LAI’s email'],
+  emailCopied: ['邮箱已复制', 'Email copied'],
+  emailCopyFailed: ['复制失败，请重试', 'Could not copy. Please try again.'],
   trackEffects: ['音轨效果', 'Track effects'],
   effectTiming: ['包络触发次数或延迟同步比例', 'Envelope repeats or delay sync division'],
   effectPower: ['启用或旁通当前效果组', 'Enable or bypass this effect group'],
