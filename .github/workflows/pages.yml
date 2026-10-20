@@ -27,7 +27,9 @@ jobs:
       - name: Prepare static site
         run: |
           mkdir _site
-          cp index.html style.css app.js audio.js simulation.js i18n.js LICENSE _site/
+          cp index.html style.css LICENSE _site/
+          cp app.js audio.js simulation.js i18n.js continuous-*.js cycle-*.js effects*.js field-evolution.js loops.js recorder-worklet.js recording*.js tempo*.js _site/
+          cp -R assets _site/assets
           touch _site/.nojekyll
       - name: Upload site
         uses: actions/upload-pages-artifact@v4
