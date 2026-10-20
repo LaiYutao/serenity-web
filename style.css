@@ -204,3 +204,8 @@ dialog{border:0;border-radius:6px;background:var(--panel);color:var(--ink);max-w
  .stage{flex:1;height:auto;min-height:0}
 }
 @media(max-width:760px){.masthead{height:44px}}
+
+.brand-lockup{display:flex;align-items:center;gap:10px;min-width:0}
+.brand-divider{font:400 20px/1 Arial,Helvetica,sans-serif;color:var(--ink)}
+.brand-credit{font:600 15px/1 Arial,Helvetica,sans-serif;letter-spacing:.18em;white-space:nowrap}
+@media(max-width:760px){.brand-lockup{gap:7px}.brand-credit{font-size:12px;letter-spacing:.14em}.brand-divider{font-size:17px}}
