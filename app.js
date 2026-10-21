@@ -13,7 +13,7 @@ try{language=readLanguage(window.localStorage);}catch{}
 const t=(key,values)=>translate(language,key,values);
 const sim=new Simulation(), sound=new SoundEngine();
 const recorder=new LoopRecorder(sound);
-let exportCapture=null,exportMode='live',cycleLocked=false,exportBusy=false;
+let exportCapture=null,exportMode='live',cycleLocked=false,exportBusy=false,exportStatusKey='';
 const canvas=$('#field'), context=canvas.getContext('2d',{alpha:false});
 const point={x:119,y:69}, keys=new Set();
 let started=false, paused=false, type='circle', amplitude=1, frequency=.25;
@@ -71,7 +71,7 @@ function applyLanguage(next){
   document.querySelectorAll('[data-i18n-aria]').forEach(element=>{element.setAttribute('aria-label',t(element.dataset.i18nAria));});
   document.querySelectorAll('[data-language]').forEach(button=>button.setAttribute('aria-pressed',button.dataset.language===language));
   const manual=$('#download-manual');
-  manual.href=`assets/manual/Serenity-User-Guide-${language.toUpperCase()}.pdf`;
+  manual.href=`assets/manual/Serenity-User-Guide-${language.toUpperCase()}.pdf?v=export-and-shortcuts`;
   manual.download=`Serenity-User-Guide-${language.toUpperCase()}.pdf`;
   manual.hreflang=language==='en'?'en':'zh-CN';
   syncSelection();syncRegion();refreshStatus();setMode(sound.mode);
@@ -100,7 +100,7 @@ function refreshStatus(){
   $('#live-dot').classList.toggle('live',started&&!paused&&!document.hidden);
   $('#pause').setAttribute('aria-pressed',started&&!paused);
   $('#pause-label').textContent=t(started&&!paused?'pauseAction':'startAction');
-  $('#pause').title=t('transportToggle');
+  $('#pause').title=t('transportToggle')+' (P / Space)';
   const pauseIcon=$('#pause .icon'),pauseIconPath=`assets/icons/${started&&!paused?'pause-fill':'play-fill'}.svg`;
   if(pauseIcon.getAttribute('src')!==pauseIconPath)pauseIcon.setAttribute('src',pauseIconPath);
   $('#pause-overlay').hidden=!paused;
@@ -287,10 +287,12 @@ window.addEventListener('keydown',event=>{
   if(event.ctrlKey||event.metaKey||event.altKey||$('#help-dialog').open||$('#export-dialog').open||event.target.matches('input,textarea,select'))return;
   const key=event.key.toLowerCase();
   if(key==='escape'&&selectingRegion){event.preventDefault();cancelRegionDrag();selectingRegion=false;syncRegion();return;}
-  if(!['w','a','s','d','j','k','m','r','x',' '].includes(key))return;
+  if(!['w','a','s','d','j','k','m','r','x','o','p',' '].includes(key))return;
   // Space on a focused button retains the native accessible activation.
   if(key===' '&&event.target.closest('button'))return;
   event.preventDefault();if(event.repeat)return;keys.add(key);
+  if(key==='o'){$('#record').click();return;}
+  if(key==='p'){togglePause();return;}
   if(!started){if(key===' '){void begin();}return;}
   if(key==='j'||key==='k'){
     clearTimeout(pendingPlant);
@@ -374,6 +376,7 @@ function syncRecord(){
   $('#record-mode').title=t('recordMode')+' · '+t(recordMode==='audio'?'directRecord':'fieldLayer');
   $('.record-rocker').dataset.mode=recordMode;
   $('#record [data-i18n]').textContent=t(recorder.directRecording?'stopRecord':'record');
+  $('#record').title=t(recorder.directRecording?'stopRecord':'record')+' (O)';
   $('#record-status').textContent=recorder.directRecording?t('recording',{time:formatTime(Math.max(0,sound.context.currentTime-recorder.inputRecorder.startedAt))}):recorder.recording?t('processing'):t('trackCount',{count:recorder.tracks.length})+(recorder.tracks.length>3?` · ${trackPage+1}/${Math.ceil(recorder.tracks.length/3)}`:'');
 }
 function controlButton(label,text,action){
@@ -410,7 +413,12 @@ function syncExport(){
   button.disabled=exportBusy;
   button.setAttribute('aria-label',t(active?'exportStop':'exportAudio'));
   button.title=t(active?'exportStop':'exportAudio');
+  const status=$('#export-status');
+  const compact={exportStarted:'exportStatusRecording',exportCycleStarted:'exportStatusCycle',exportTruncatedStarted:'exportStatusTruncated',exportSaved:'exportStatusSaved',exportEmpty:'exportStatusEmpty'};
+  status.hidden=!exportStatusKey;status.textContent=exportStatusKey?t(compact[exportStatusKey]??'exportStatusFailed'):'';
+  status.title=exportStatusKey?t(exportStatusKey):'';
 }
+function showExportStatus(key){exportStatusKey=key;syncExport();}
 function syncExportDialog(){
   $('#export-error').hidden=true;
   document.querySelectorAll('[data-export-mode]').forEach(button=>button.setAttribute('aria-pressed',button.dataset.exportMode===exportMode));
@@ -464,19 +472,19 @@ async function startAudioExport(){
     }
     capture=new MixCapture(sound);exportCapture=capture;
     await capture.start(options);
-    $('#export-dialog').close();notify(fileMode==='cycle-truncated'?'exportTruncatedStarted':exportMode==='cycle'?'exportCycleStarted':'exportStarted');
+    $('#export-dialog').close();showExportStatus(fileMode==='cycle-truncated'?'exportTruncatedStarted':exportMode==='cycle'?'exportCycleStarted':'exportStarted');
     void capture.done.then(({samples,sampleRate})=>{
       if(samples.length<sampleRate*.1)throw new Error('exportEmpty');
       const name=plannedFrames&&samples.length<plannedFrames?fileMode+'-partial':fileMode;
-      downloadWav(samples,sampleRate,name);notify('exportSaved');
-    }).catch(error=>notify(['exportEmpty'].includes(error.message)?error.message:'exportFailed')).finally(()=>{
+      downloadWav(samples,sampleRate,name);showExportStatus('exportSaved');
+    }).catch(error=>showExportStatus(['exportEmpty'].includes(error.message)?error.message:'exportFailed')).finally(()=>{
       if(branch){sound.tracksBus.disconnect(branch.gain);branch.gain.disconnect();branch.limiter.disconnect();}
       exportCapture=null;lockCycleExport(false);syncExport();
     });
   }catch(error){
     if(branch){sound.tracksBus.disconnect(branch.gain);branch.gain.disconnect();branch.limiter.disconnect();}
-    exportCapture=null;lockCycleExport(false);notify(['exportNoTracks','exportTrackBusy'].includes(error.message)?error.message:'exportFailed');
-    if($('#export-dialog').open){$('#export-error').textContent=t(noticeKey);$('#export-error').hidden=false;}
+    exportCapture=null;lockCycleExport(false);showExportStatus(['exportNoTracks','exportTrackBusy'].includes(error.message)?error.message:'exportFailed');
+    if($('#export-dialog').open){$('#export-error').textContent=t(exportStatusKey);$('#export-error').hidden=false;}
   }finally{exportBusy=false;syncExport();$('#start-export').disabled=false;}
 }
 $('#export-audio').onclick=()=>{

@@ -231,3 +231,13 @@ dialog{border:0;border-radius:6px;background:var(--panel);color:var(--ink);max-w
 .export-actions{margin-top:18px;width:100%}
 .export-actions button{flex:1}
 .loop-editor[inert]{opacity:.65}
+
+/* Key beds follow the 29px page keys; readouts follow the 24px volume display. */
+.workspace>.console-bar{--console-key-height:29px;--console-screen-height:24px;align-items:center}
+.console-bar .transport,.console-bar .master-control>.key-bank,.console-bar .track-pagination>.key-bank{height:var(--console-key-height);padding:2px}
+.console-bar .transport button,.workspace>.console-bar .master-control button,.console-bar .track-pagination .key-bank button{height:25px;min-height:25px;padding-top:0;padding-bottom:0}
+.console-bar #record-mode{height:var(--console-key-height);width:calc(29px * 98 / 31)}
+.workspace>.console-bar #volume-value,.workspace>.console-bar #record-status{height:var(--console-screen-height);line-height:12px;padding-top:6px;padding-bottom:6px;display:flex;align-items:center;justify-content:center}
+.console-bar .export-status{font-size:10px;line-height:1.25;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:96px}
+@media(max-width:1100px){.console-bar .export-status{max-width:65px;font-size:9px}}
+@media(max-width:1100px) and (min-width:761px){.workspace>.console-bar .transport button{padding-left:7px;padding-right:7px}}
