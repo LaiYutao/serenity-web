@@ -35,7 +35,7 @@ export class LoopRecorder {
       const ctx=this.sound.context,buffer=ctx.createBuffer(1,result.samples.length,ctx.sampleRate);
       buffer.copyToChannel(result.samples,0);
       const continuous=!!result.pitchMap&&!!this.sound.createContinuousLoop;
-      const source=continuous?this.sound.createContinuousLoop(result.pitchMap,buffer.duration,waveform,liveKey):ctx.createBufferSource(),gain=ctx.createGain(),playbackGain=ctx.createGain();
+      const source=continuous?this.sound.createContinuousLoop(result.pitchMap,buffer.duration,waveform,liveKey):(this.sound.createBufferLoop?.(buffer)??ctx.createBufferSource()),gain=this.sound.createTrackGain?.()??ctx.createGain(),playbackGain=ctx.createGain();
       if(!continuous){source.buffer=buffer;source.loop=true;}source.connect(playbackGain);
       const track={id:this.nextId++,buffer,original:result.samples,settings:{start:0,end:0,lowPitch:0,highPitch:127},speed:1,appliedSpeed:1,speedMode:'stretch',appliedMode:'stretch',baseDuration:buffer.duration,waveform,pitchKey:'0:127@1:stretch',pitchSamples:result.samples,source,gain,playbackGain,continuous,volume:1,muted:false,solo:false,startedAt:ctx.currentTime,peaks:envelope(result.samples),pitchMap:result.pitchMap,pitchCorrection:result.pitchCorrection};
       this.connectEffects(track);gain.gain.value=0;this.tracks.push(track);this.mix();
@@ -65,7 +65,7 @@ export class LoopRecorder {
         worker.postMessage({type:'analyse',samples,sampleRate:this.sound.context.sampleRate});
       });
       const ctx=this.sound.context,buffer=ctx.createBuffer(1,samples.length,ctx.sampleRate);buffer.copyToChannel(samples,0);
-      const source=ctx.createBufferSource(),gain=ctx.createGain(),playbackGain=ctx.createGain();
+      const source=this.sound.createBufferLoop?.(buffer)??ctx.createBufferSource(),gain=this.sound.createTrackGain?.()??ctx.createGain(),playbackGain=ctx.createGain();
       source.buffer=buffer;source.loop=true;source.connect(playbackGain);
       const track={id:this.nextId++,buffer,original:samples,settings:{start:0,end:0,lowPitch:0,highPitch:127},speed:1,appliedSpeed:1,speedMode:'stretch',appliedMode:'stretch',baseDuration:buffer.duration,waveform:'recording',pitchKey:'0:127@1:stretch',pitchSamples:samples,source,gain,playbackGain,continuous:false,volume:1,muted:false,solo:false,startedAt:ctx.currentTime,peaks:envelope(samples),pitchMap,pitchCorrection:0};
       this.connectEffects(track);gain.gain.value=0;this.tracks.push(track);this.mix();track.startedAt=ctx.currentTime;track.effects.setOrigin(track.startedAt);source.start(track.startedAt,0);
@@ -73,7 +73,8 @@ export class LoopRecorder {
   }
   connectEffects(track){
     track.fx=createFXState();track.effects=this.effectsFactory(this.sound.context,track.buffer.duration,track.startedAt);
-    track.playbackGain.connect(track.effects.input);track.effects.output.connect(track.gain);track.gain.connect(this.sound.tracksBus??this.sound.master);
+    track.playbackGain.connect(track.effects.input);track.effects.output.connect(track.gain);
+    if(this.sound.connectTrack)track.mixSlot=this.sound.connectTrack(track.gain);else track.gain.connect(this.sound.tracksBus??this.sound.master);
   }
   setEffects(track,group,values){Object.assign(track.fx[group],values);track.effects.setState(track.fx);}
   resetEffects(track){track.fx=createFXState();track.effects.setState(track.fx);track.effects.reset();}
@@ -109,14 +110,14 @@ export class LoopRecorder {
       track.startedAt=now-position*buffer.duration;track.source.setRate((track.baseDuration??track.original.length/ctx.sampleRate)/buffer.duration,speedMode!=='normal');track.appliedSpeed=speed;track.appliedMode=speedMode;
       track.buffer=buffer;track.effects.setDuration?.(buffer.duration);track.effects.setOrigin(track.startedAt);track.peaks=envelope(samples);this.onchange();return;
     }
-    const next=ctx.createBufferSource(),fade=ctx.createGain();next.buffer=buffer;next.loop=true;next.connect(fade).connect(track.effects.input);
+    const next=this.sound.createBufferLoop?.(buffer)??ctx.createBufferSource(),fade=ctx.createGain();next.buffer=buffer;next.loop=true;next.connect(fade).connect(track.effects.input);
     const when=ctx.currentTime+.01,position=((when-track.startedAt)%track.buffer.duration+track.buffer.duration)%track.buffer.duration/track.buffer.duration,offset=position*buffer.duration;
     fade.gain.setValueAtTime(0,when);fade.gain.linearRampToValueAtTime(1,when+.01);next.start(when,offset);
     const previous=track.source,previousGain=track.playbackGain;previousGain.gain.cancelScheduledValues(when);previousGain.gain.setValueAtTime(previousGain.gain.value,when);previousGain.gain.linearRampToValueAtTime(0,when+.01);previous.stop(when+.012);previous.onended=()=>{previous.disconnect();previousGain.disconnect();};
     track.startedAt=when-offset;track.appliedSpeed=speed;track.appliedMode=speedMode;track.effects.setDuration?.(buffer.duration);track.effects.setOrigin(track.startedAt);track.source=next;track.playbackGain=fade;track.buffer=buffer;track.peaks=envelope(samples);this.onchange();
   }
   mix(){const now=this.sound.context.currentTime;for(const track of this.tracks){track.gain.gain.cancelScheduledValues(now);track.gain.gain.setTargetAtTime(loopGain(track,this.tracks),now,.015);}}
-  remove(id){const index=this.tracks.findIndex(track=>track.id===id);if(index<0)return;const [track]=this.tracks.splice(index,1);track.worker?.terminate();track.source.stop();track.source.disconnect();track.playbackGain.disconnect();track.effects.destroy();track.gain.disconnect();this.mix();this.onchange();}
+  remove(id){const index=this.tracks.findIndex(track=>track.id===id);if(index<0)return;const [track]=this.tracks.splice(index,1);track.worker?.terminate();track.source.stop();track.source.disconnect();track.playbackGain.disconnect();track.effects.destroy();if(track.gain.destroy)track.gain.destroy();else track.gain.disconnect();this.sound.releaseTrack?.(track.mixSlot);this.mix();this.onchange();}
 }
 
 export function paginateTracks(tracks,page=0){

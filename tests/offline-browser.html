@@ -1,0 +1,49 @@
+<!doctype html><meta charset="utf-8"><title>Serenity 离线一致性本地验证</title>
+<style>body{font:16px/1.6 system-ui;background:#f4f3ee;color:#252624;margin:36px;max-width:900px}button{padding:12px 20px;border:2px solid #252624;background:#e3e3de;font:inherit}pre{white-space:pre-wrap;border-top:1px solid;padding-top:20px}h1{font-size:26px}</style>
+<h1>Serenity 离线一致性本地验证</h1><p>直录缓冲 + 连续微分音 + 十二音三轨，包含已存在的 Filter、Delay 尾音、音量与压缩器状态。</p><label>场景 <select id="scenario"><option value="base">44.1kHz 三轨实时对照</option><option value="rate">48kHz 变速与音量过渡对照</option><option value="mute">静音过渡与遮罩对照</option><option value="loud">高增益压缩状态对照</option><option value="many">16 轨与删除后复用通道对照</option><option value="long">10 分钟离线性能</option></select></label> <button id="run">运行逐采样对比</button><pre id="result">尚未运行</pre>
+<script type="module">
+import { SoundEngine } from '../audio.js';
+import { LoopRecorder } from '../loops.js';
+import { MixCapture,loadExportModule } from '../recording-export.js';
+import { snapshotCycle,startOfflineRender } from '../recording-offline.js';
+const result=document.querySelector('#result'),button=document.querySelector('#run');
+button.onclick=async()=>{
+ button.disabled=true;let sound;
+ try{
+  const scenario=document.querySelector('#scenario').value;
+  result.textContent='正在创建真实音频节点…';sound=new SoundEngine({sampleRate:scenario==='rate'?48000:44100});await sound.start();await loadExportModule(sound);
+  const ctx=sound.context,sr=ctx.sampleRate,recorder=new LoopRecorder(sound);const silent=ctx.createGain();silent.gain.value=0;sound.master.disconnect(ctx.destination);sound.master.connect(silent).connect(ctx.destination);sound.master.gain.setTargetAtTime(.65,ctx.currentTime,.025);
+  const make=(id,duration,mode,volume)=>{
+   const buffer=ctx.createBuffer(1,Math.round(duration*sr),sr);buffer.copyToChannel(Float32Array.from({length:buffer.length},(_,i)=>.27*Math.sin(i*2*Math.PI*220/sr)+.11*Math.sin(i*2*Math.PI*337/sr)+(scenario==='loud'?.7:0)),0);
+   let source;
+   if(mode==='buffer')source=sound.createBufferLoop(buffer);
+   else source=sound.createContinuousLoop({mode:mode==='tone'?'average':'cluster',frequencies:Float64Array.of(263.37,381.21,307.53,419.73),weights:Array.from({length:8},(_,row)=>Array.from({length:12},(_,i)=>i===row%12?.6:.02)),pitchRate:1},duration,mode==='tone'?'sawtooth':'triangle','test');
+   const when=ctx.currentTime+.03,offset=.137,track={id,buffer,source,gain:sound.createTrackGain(),playbackGain:ctx.createGain(),continuous:mode!=='buffer',volume,muted:false,solo:false,startedAt:when-offset};
+   source.connect(track.playbackGain);recorder.connectEffects(track);track.gain.gain.value=volume;
+   recorder.setEffects(track,'filter',{enabled:true,cutoff:950,resonance:.31,envMod:.53,decay:.19,repeats:4});
+   recorder.setEffects(track,'delay',{enabled:true,time:.083,feedback:.61,mix:.44,tone:2200});
+   recorder.tracks.push(track);source.start(when,offset);return track;
+  };
+  const loud=scenario==='loud';if(loud)sound.master.gain.setTargetAtTime(1,ctx.currentTime,.025);
+  const a=make(1,.5,'buffer',loud?2:.72),b=make(2,.75,'tone',loud?2:.61),c=make(3,1,'cluster',loud?2:.57);
+  b.source.edit({start:.2,end:.4,lowPitch:0,highPitch:127});
+  if(scenario==='many'){for(let id=4;id<=16;id++)make(id,[.5,.75,1][id%3],['buffer','tone','cluster'][id%3],.22);recorder.remove(3);make(17,1,'cluster',.57);}
+  if(scenario==='rate'){b.source.setRate(1.5,false);c.source.setRate(.75,true);b.buffer=ctx.createBuffer(1,Math.round(.5*sr),sr);c.buffer=ctx.createBuffer(1,Math.round(4/3*sr),sr);b.startedAt=ctx.currentTime-.13;c.startedAt=ctx.currentTime-.21;}
+  await new Promise(resolve=>setTimeout(resolve,300));
+  if(scenario==='mute'){c.muted=true;c.gain.gain.setTargetAtTime(0,ctx.currentTime,.2);}
+  if(scenario==='rate'){a.gain.gain.setTargetAtTime(.31,ctx.currentTime,.15);sound.master.gain.setTargetAtTime(.4,ctx.currentTime,.2);}
+  result.textContent='同步复制音频线程状态…';const snapshot=await snapshotCycle(sound,recorder.tracks,1);
+  if(scenario==='long'){snapshot.frames=sr*600;const start=performance.now(),rendered=await startOfflineRender(snapshot,value=>result.textContent='十分钟离线计算 '+Math.round(value*100)+'%').done;let peak=0;for(const x of rendered.samples)peak=Math.max(peak,Math.abs(x));result.textContent=JSON.stringify({seconds:rendered.samples.length/sr,offlineSeconds:(performance.now()-start)/1000,frames:rendered.samples.length,peak},null,2);document.body.dataset.complete='true';return;}
+  const reference=new MixCapture(sound);await reference.start({input:sound.tracksOutput,when:snapshot.startFrame/sr,duration:snapshot.frames/sr});
+  if(Math.round(reference.startedAt*sr)!==snapshot.startFrame)throw new Error('Reference missed anchor');
+  const start=performance.now(),offline=startOfflineRender(snapshot,value=>result.textContent='离线计算 '+Math.round(value*100)+'%，同时录制实时对照…');
+  const rendered=await offline.done,elapsed=(performance.now()-start)/1000;
+  const live=await reference.done;
+  let max=0,squares=0,different=0,first=-1,peak=0;
+  for(let i=0;i<rendered.samples.length;i++){const d=rendered.samples[i]-live.samples[i];peak=Math.max(peak,Math.abs(rendered.samples[i]));if(d!==0){different++;if(first<0)first=i;}max=Math.max(max,Math.abs(d));squares+=d*d;}
+  const report={scenario,compressorGainAtSnapshot:snapshot.master.compressor.gain,sampleRate:sr,tracks:recorder.tracks.length,peak,seconds:snapshot.frames/sr,offlineSeconds:elapsed,liveFrames:live.samples.length,offlineFrames:rendered.samples.length,differentSamples:different,firstDifference:first,maxAbsoluteDifference:max,rmsDifference:Math.sqrt(squares/rendered.samples.length),exact:different===0&&peak>.001};
+  result.textContent=JSON.stringify(report,null,2);document.body.dataset.complete='true';document.body.dataset.exact=String(report.exact);
+ }catch(error){result.textContent=error.stack??String(error);document.body.dataset.error='true';}
+ finally{await sound?.context?.close();button.disabled=false;}
+};
+</script>

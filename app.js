@@ -5,6 +5,7 @@ import { LoopRecorder, formatTime, loopGain, paginateTracks } from './loops.js';
 import { snapshotField, maskFromDrag } from './cycle-dsp.js';
 import { translate, readLanguage } from './i18n.js';
 import { MixCapture, encodeWav, planCycleExport, loadExportModule } from './recording-export.js';
+import { snapshotCycle, startOfflineRender } from './recording-offline.js';
 
 const $=selector=>document.querySelector(selector);
 let language='zh', noticeKey='';
@@ -13,7 +14,7 @@ try{language=readLanguage(window.localStorage);}catch{}
 const t=(key,values)=>translate(language,key,values);
 const sim=new Simulation(), sound=new SoundEngine();
 const recorder=new LoopRecorder(sound);
-let exportCapture=null,exportMode='live',cycleLocked=false,exportBusy=false,exportStatusKey='';
+let exportCapture=null,exportMode='live',cycleLocked=false,exportBusy=false,exportStatusKey='',exportProgress=0;
 const canvas=$('#field'), context=canvas.getContext('2d',{alpha:false});
 const point={x:119,y:69}, keys=new Set();
 let started=false, paused=false, type='circle', amplitude=1, frequency=.25;
@@ -411,12 +412,12 @@ function syncExport(){
   const button=$('#export-audio'),active=!!exportCapture;
   button.setAttribute('aria-pressed',active);
   button.disabled=exportBusy;
-  button.setAttribute('aria-label',t(active?'exportStop':'exportAudio'));
-  button.title=t(active?'exportStop':'exportAudio');
+  const action=active?(exportMode==='cycle'?'exportCancelRender':'exportStop'):'exportAudio';
+  button.setAttribute('aria-label',t(action));button.title=t(action);
   const status=$('#export-status');
-  const compact={exportStarted:'exportStatusRecording',exportCycleStarted:'exportStatusCycle',exportTruncatedStarted:'exportStatusTruncated',exportSaved:'exportStatusSaved',exportEmpty:'exportStatusEmpty'};
-  status.hidden=!exportStatusKey;status.textContent=exportStatusKey?t(compact[exportStatusKey]??'exportStatusFailed'):'';
-  status.title=exportStatusKey?t(exportStatusKey):'';
+  const compact={exportStarted:'exportStatusRecording',exportCycleStarted:'exportStatusCycle',exportTruncatedStarted:'exportStatusTruncated',exportSaved:'exportStatusSaved',exportEmpty:'exportStatusEmpty',exportSnapshotting:'exportSnapshotting',exportRendering:'exportRendering',exportCancelled:'exportCancelled'};
+  status.hidden=!exportStatusKey;status.textContent=exportStatusKey?t(compact[exportStatusKey]??'exportStatusFailed',{progress:exportProgress}):'';
+  status.title=exportStatusKey?t(exportStatusKey,{progress:exportProgress}):'';
 }
 function showExportStatus(key){exportStatusKey=key;syncExport();}
 function syncExportDialog(){
@@ -455,34 +456,32 @@ function downloadWav(samples,sampleRate,mode=exportMode){
 async function startAudioExport(){
   if(exportBusy||exportCapture)return;
   exportBusy=true;$('#start-export').disabled=true;syncExport();
-  let branch=null,capture=null,fileMode=exportMode,plannedFrames=null;
+  let capture=null,fileMode=exportMode,plannedFrames=null;
   try{
     await sound.start();
-    await loadExportModule(sound);
-    const options={};
     if(exportMode==='cycle'){
       if(recorder.recording)throw new Error('exportTrackBusy');
-      const plan=planCycleExport(recorder.tracks,Number($('#export-anchor').value),sound.context.sampleRate,sound.context.currentTime);
-      plannedFrames=plan.frames;if(plan.truncated)fileMode='cycle-truncated';
       lockCycleExport(true);
-      const gain=sound.context.createGain(),limiter=sound.context.createDynamicsCompressor();gain.gain.value=sound.muted?0:sound.volume;
-      for(const key of ['threshold','knee','ratio','attack','release'])limiter[key].value=sound.limiter[key].value;
-      sound.tracksBus.connect(gain);gain.connect(limiter);branch={gain,limiter};
-      options.input=limiter;options.when=plan.when;options.duration=plan.duration;
+      showExportStatus('exportSnapshotting');
+      const snapshot=await snapshotCycle(sound,recorder.tracks,Number($('#export-anchor').value));
+      plannedFrames=snapshot.frames;if(snapshot.plan.truncated)fileMode='cycle-truncated';
+      exportProgress=0;
+      capture=startOfflineRender(snapshot,value=>{
+        const next=Math.round(value*100);if(next!==exportProgress){exportProgress=next;showExportStatus('exportRendering');}
+      });exportCapture=capture;
+      $('#export-dialog').close();showExportStatus('exportRendering');
+    }else{
+      await loadExportModule(sound);capture=new MixCapture(sound);exportCapture=capture;await capture.start();
+      $('#export-dialog').close();showExportStatus('exportStarted');
     }
-    capture=new MixCapture(sound);exportCapture=capture;
-    await capture.start(options);
-    $('#export-dialog').close();showExportStatus(fileMode==='cycle-truncated'?'exportTruncatedStarted':exportMode==='cycle'?'exportCycleStarted':'exportStarted');
     void capture.done.then(({samples,sampleRate})=>{
       if(samples.length<sampleRate*.1)throw new Error('exportEmpty');
       const name=plannedFrames&&samples.length<plannedFrames?fileMode+'-partial':fileMode;
       downloadWav(samples,sampleRate,name);showExportStatus('exportSaved');
-    }).catch(error=>showExportStatus(['exportEmpty'].includes(error.message)?error.message:'exportFailed')).finally(()=>{
-      if(branch){sound.tracksBus.disconnect(branch.gain);branch.gain.disconnect();branch.limiter.disconnect();}
+    }).catch(error=>showExportStatus(['exportEmpty','exportCancelled'].includes(error.message)?error.message:'exportFailed')).finally(()=>{
       exportCapture=null;lockCycleExport(false);syncExport();
     });
   }catch(error){
-    if(branch){sound.tracksBus.disconnect(branch.gain);branch.gain.disconnect();branch.limiter.disconnect();}
     exportCapture=null;lockCycleExport(false);showExportStatus(['exportNoTracks','exportTrackBusy'].includes(error.message)?error.message:'exportFailed');
     if($('#export-dialog').open){$('#export-error').textContent=t(exportStatusKey);$('#export-error').hidden=false;}
   }finally{exportBusy=false;syncExport();$('#start-export').disabled=false;}

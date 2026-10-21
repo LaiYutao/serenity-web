@@ -1,9 +1,10 @@
 import { ContinuousTone, ContinuousCluster } from './continuous-dsp.js';
 class ContinuousFieldProcessor extends AudioWorkletProcessor{
   constructor(){
-    super();this.live=new ContinuousTone();this.tracks=new Map();this.running=false;
+    super();this.live=new ContinuousTone();this.tracks=new Map();this.running=false;this.snapshots=[];
     this.port.onmessage=({data})=>{
-      if(data.type==='live'){
+      if(data.type==='snapshot'){this.snapshots.push(data);}
+      else if(data.type==='live'){
         Object.assign(this.live,{target:data.hz,speed:data.speed,waveform:data.waveform});this.running=data.running;
       }else if(data.type==='invalidate')this.live.profile=null;
       else if(data.type==='add'){
@@ -25,6 +26,11 @@ class ContinuousFieldProcessor extends AudioWorkletProcessor{
     };
   }
   process(_inputs,outputs){
+    this.snapshots=this.snapshots.filter(request=>{
+      if(currentFrame<request.frame)return true;
+      const tracks=request.slots.map(slot=>{const tone=this.tracks.get(slot);return {slot,kind:tone instanceof ContinuousCluster?'cluster':'tone',state:tone?{...tone}:null};});
+      this.port.postMessage({type:'snapshot',id:request.id,frame:currentFrame,tracks});return false;
+    });
     const live=outputs[0][0];
     for(let i=0;i<live.length;i++)live[i]=this.live.next(sampleRate,this.running);
     for(const [slot,tone] of this.tracks){const out=outputs[slot][0];for(let i=0;i<out.length;i++)out[i]=tone.next(sampleRate)*(tone instanceof ContinuousCluster?12000:10000)/32768;}

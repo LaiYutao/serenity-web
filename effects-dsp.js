@@ -1,3 +1,4 @@
+import { cloneState } from './stateful-dsp.js';
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 export const FX_PARAMETERS={
   filter:[
@@ -36,6 +37,16 @@ export class TrackEffectDSP{
   }
   setState(state){this.state={filter:{...this.state.filter,...state.filter},delay:{...this.state.delay,...state.delay}};}
   reset(){this.buffer.fill(0);this.z1=0;this.z2=0;this.echo=0;}
+  snapshot(){
+    const length=this.buffer.length,count=Math.min(length,Math.ceil(Math.max(this.current.time,delaySeconds(this.state.delay,this.duration))*this.sampleRate)+3);
+    const start=(this.cursor-count+length)%length,history=new Float32Array(count);
+    for(let i=0;i<count;i++)history[i]=this.buffer[(start+i)%length];
+    const {buffer,...state}=this;return {...state,bufferLength:length,historyStart:start,history};
+  }
+  static restore(state){
+    const {bufferLength,historyStart,history,...values}=cloneState(state),dsp=Object.assign(Object.create(TrackEffectDSP.prototype),values);
+    dsp.buffer=new Float32Array(bufferLength);for(let i=0;i<history.length;i++)dsp.buffer[(historyStart+i)%bufferLength]=history[i];return dsp;
+  }
   next(input,time){
     const {filter,delay}=this.state,c=this.current,s=this.smoothing;
     if(!filter.enabled&&!delay.enabled&&this.filterWet<1e-6&&this.delayWet<1e-6){if(this.active){this.reset();this.active=false;}return input;}
