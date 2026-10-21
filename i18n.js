@@ -115,7 +115,7 @@ export const messages = {
   helpPause: ['暂停 / 继续', 'Pause / resume'],
   helpReset: ['清空 / 停止并回到开始页', 'Clear / stop and return to the start screen'],
   helpNote: ['原声保留原版音色，基础波形可切换音色。叠场记录当前场与取声框的声音演化，直录保留手动演奏的声音变化。选中下方音轨可编辑遮罩、音高范围、速度和效果。音轨仅保留在当前页面，刷新后清除。', 'Original preserves the original timbre. Field captures the sound evolution of the current field and listening regions; Audio records your live performance. Select a loop to edit masks, pitch limits, speed and effects. Loops stay in this page only and are cleared on reload.'],
-  downloadManual: ['下载说明 PDF', 'Download user guide PDF'],
+  downloadManual: ['下载详细说明 PDF', 'Download detailed guide PDF'],
   regionDone: ['完成框选', 'Done selecting'],
   regionCancel: ['取消框选', 'Cancel selection'],
   regionAdd: ['添加选区', 'Add regions'],
