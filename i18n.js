@@ -39,6 +39,8 @@ export const messages = {
   emailCopied: ['邮箱已复制', 'Email copied'],
   emailCopyFailed: ['复制失败，请重试', 'Could not copy. Please try again.'],
   trackEffects: ['音轨效果', 'Track effects'],
+  recallField: ['唤回此音轨的场，替换当前画面', 'Recall this track’s field and replace the current scene'],
+  fieldRecallFailed: ['暂时无法唤回此音轨的场。', 'Unable to recall this track’s field right now.'],
   effectTiming: ['包络触发次数或延迟同步比例', 'Envelope repeats or delay sync division'],
   fadeTiming: ['每个音轨周期渐入渐出，不改变音轨长度', 'Fade repeats once per track cycle without changing its length'],
   fadeTimeHint: ['渐变时长按循环比例保存，变速后跟随周期', 'Fade length follows the loop duration when speed changes'],

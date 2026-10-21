@@ -7,6 +7,7 @@ import { translate, readLanguage } from './i18n.js';
 import { MixCapture, encodeWav, planCycleExport, loadExportModule } from './recording-export.js';
 import { snapshotCycle, startOfflineRender } from './recording-offline.js';
 import { installWheelControls } from './wheel-controls.js';
+import { captureFieldScene, restoreFieldScene, fieldRecallElapsed } from './field-recall.js';
 
 const $=selector=>document.querySelector(selector);
 let language='zh', noticeKey='';
@@ -73,7 +74,7 @@ function applyLanguage(next){
   document.querySelectorAll('[data-i18n-aria]').forEach(element=>{element.setAttribute('aria-label',t(element.dataset.i18nAria));});
   document.querySelectorAll('[data-language]').forEach(button=>button.setAttribute('aria-pressed',button.dataset.language===language));
   const manual=$('#download-manual');
-  manual.href=`assets/manual/Serenity-User-Guide-${language.toUpperCase()}.pdf?v=export-and-shortcuts`;
+  manual.href=`assets/manual/Serenity-User-Guide-${language.toUpperCase()}.pdf?v=fade-and-wheel`;
   manual.download=`Serenity-User-Guide-${language.toUpperCase()}.pdf`;
   manual.hreflang=language==='en'?'en':'zh-CN';
   syncSelection();syncRegion();refreshStatus();setMode(sound.mode);
@@ -222,6 +223,9 @@ function setSceneSpeed(value){
   }
   sceneSpeed=next;sound.speed=Math.abs(sceneSpeed);
   sound.setLiveKey(liveSoundKey());sound.update(audioDistribution());
+  syncSceneSpeed();
+}
+function syncSceneSpeed(){
   $('#speed-range').value=String(sceneSpeed);
   const speedSelect=$('#speed-value');
   speedSelect.querySelector('[data-custom-speed]')?.remove();
@@ -347,7 +351,24 @@ function drawWaveform(){
   ctx.stroke();
 }
 $('#waveform').onchange=event=>{sound.setWaveform(event.target.value);drawWaveform();};
-let recordBusy=false,trackDrawTime=0,editTrackId=null,trackPage=0,visibleTracks=[],recordMode='field';
+let recordBusy=false,recallingField=false,trackDrawTime=0,editTrackId=null,trackPage=0,visibleTracks=[],recordMode='field';
+async function recallTrackField(track){
+  if(!track.fieldScene||cycleLocked||recallingField||recordBusy||recorder.recording||track.worker)return;
+  recallingField=true;document.querySelectorAll('.recall-field').forEach(button=>button.disabled=true);
+  try{
+    await sound.start();
+    const elapsed=await fieldRecallElapsed(sound,track);
+    if(!recorder.tracks.includes(track)||cycleLocked||recorder.recording)return;
+    keys.clear();clearTimeout(pendingPlant);cancelRegionDrag();selectingRegion=false;
+    const scene=restoreFieldScene(sim,track.fieldScene,elapsed);
+    Object.assign(point,scene.point);soundRegions=scene.regions;accumulator=scene.accumulator;amplitude=scene.amplitude??1;frequency=scene.frequency??.25;
+    started=true;paused=false;$('#welcome').hidden=true;previousAudioTime=sound.context.currentTime;previous=performance.now();
+    sceneSpeed=scene.speed;sound.speed=Math.abs(sceneSpeed);syncSceneSpeed();
+    sound.invalidateContinuous();sound.setWaveform(scene.waveform);$('#waveform').value=scene.waveform;setMode(scene.mode);selectType(scene.type);syncSelection();syncRegion();drawWaveform();refreshStatus();
+    dirty=true;notify('');
+  }catch{notify('fieldRecallFailed');}
+  finally{recallingField=false;renderTracks();}
+}
 $('#record-mode').onclick=event=>{recordMode=event.target.closest('[data-record-choice]')?.dataset.recordChoice??(recordMode==='field'?'audio':'field');syncRecord();};
 $('#record').onclick=async()=>{
   if(recordBusy)return;
@@ -361,7 +382,8 @@ $('#record').onclick=async()=>{
       else{
         advanceField();sound.setLiveKey(liveSoundKey());
         const snapshot=snapshotField(sim,currentRegions(),Math.abs(sceneSpeed));snapshot.time+=accumulator;
-        await recorder.capture(snapshot,()=>{advanceField();return Math.max(0,sim.time+accumulator-snapshot.time)/snapshot.speed;});
+        const fieldScene=captureFieldScene(sim,{speed:sceneSpeed,mode:sound.mode,waveform:sound.waveform,regions:currentRegions(),point,type,amplitude,frequency,accumulator});
+        await recorder.capture(snapshot,()=>{advanceField();return Math.max(0,sim.time+accumulator-snapshot.time)/snapshot.speed;},fieldScene);
         trackPage=Math.floor((recorder.tracks.length-1)/3);renderTracks();
       }
     }
@@ -397,7 +419,16 @@ function renderTracks(){
     const time=document.createElement('span');time.className='track-time';time.textContent=formatTime(track.buffer.duration);
     const repeat=document.createElement('img');repeat.src='assets/icons/repeat.svg';repeat.className='icon';repeat.alt='';
     display.append(number,wave,time,repeat);track.display=display;track.canvas=wave;
-    row.append(display);list.append(row);
+    row.append(display);
+    if(track.fieldScene){
+      row.classList.add('has-field-recall');
+      const recall=document.createElement('button');recall.type='button';recall.className='recall-field';
+      recall.innerHTML='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.94 15 14.06H1Z" fill="currentColor"/></svg>';
+      recall.setAttribute('aria-label',t('recallField'));recall.disabled=cycleLocked||!!track.worker||recallingField;
+      recall.onclick=()=>void recallTrackField(track);
+      row.append(recall);
+    }
+    list.append(row);
   }
   for(let slot=visibleTracks.length;slot<3;slot++){
     const empty=document.createElement('div');empty.className='track-placeholder screen';
@@ -447,6 +478,7 @@ function syncExportDialog(){
 }
 function lockCycleExport(locked){
   cycleLocked=locked;$('.loop-editor').inert=locked;syncRecord();
+  document.querySelectorAll('.recall-field').forEach(button=>button.disabled=locked||recallingField||!!recorder.tracks.find(track=>String(track.id)===button.closest('.loop-row').dataset.track)?.worker);
 }
 function downloadWav(samples,sampleRate,mode=exportMode){
   const blob=new Blob([encodeWav(samples,sampleRate)],{type:'audio/wav'}),url=URL.createObjectURL(blob),link=document.createElement('a');

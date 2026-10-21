@@ -21,16 +21,16 @@ export function formatTime(seconds) {
 }
 export class LoopRecorder {
   constructor(sound,{effectsFactory=(ctx,duration,origin)=>new TrackEffects(ctx,duration,origin)}={}){this.effectsFactory=effectsFactory;this.sound=sound;this.recording=false;this.tracks=[];this.nextId=1;this.onchange=()=>{};}
-  async capture(snapshot,elapsed=null){
+  async capture(snapshot,elapsed=null,fieldScene=null){
     if(this.recording)return;
     if(this.tracks.length>=16)throw new Error('recordLimit');
-    await this.sound.start();const capturedAt=this.sound.context.currentTime,waveform=this.sound.waveform,liveKey=this.sound.liveKey;this.recording=true;this.onchange();
+    await this.sound.start();const capturedAt=this.sound.context.currentTime,waveform=this.sound.waveform,mode=this.sound.mode,liveKey=this.sound.liveKey;this.recording=true;this.onchange();
     try{
       const result=await new Promise((resolve,reject)=>{
         const worker=new Worker(new URL('./cycle-worker.js',import.meta.url),{type:'module'});
         worker.onmessage=({data})=>{worker.terminate();data.error?reject(new Error(data.error)):resolve(data);};
         worker.onerror=error=>{worker.terminate();reject(error);};
-        worker.postMessage({snapshot,mode:this.sound.mode,waveform,sampleRate:this.sound.context.sampleRate});
+        worker.postMessage({snapshot,mode,waveform,sampleRate:this.sound.context.sampleRate});
       });
       const ctx=this.sound.context,buffer=ctx.createBuffer(1,result.samples.length,ctx.sampleRate);
       buffer.copyToChannel(result.samples,0);
@@ -38,6 +38,7 @@ export class LoopRecorder {
       const source=continuous?this.sound.createContinuousLoop(result.pitchMap,buffer.duration,waveform,liveKey):(this.sound.createBufferLoop?.(buffer)??ctx.createBufferSource()),gain=this.sound.createTrackGain?.()??ctx.createGain(),playbackGain=ctx.createGain();
       if(!continuous){source.buffer=buffer;source.loop=true;}source.connect(playbackGain);
       const track={id:this.nextId++,buffer,original:result.samples,settings:{start:0,end:0,lowPitch:0,highPitch:127},speed:1,appliedSpeed:1,speedMode:'stretch',appliedMode:'stretch',baseDuration:buffer.duration,waveform,pitchKey:'0:127@1:stretch',pitchSamples:result.samples,source,gain,playbackGain,continuous,volume:1,muted:false,solo:false,startedAt:ctx.currentTime,peaks:envelope(result.samples),pitchMap:result.pitchMap,pitchCorrection:result.pitchCorrection};
+      track.fieldScene=fieldScene;
       this.connectEffects(track);gain.gain.value=0;this.tracks.push(track);this.mix();
       // Align to the field clock after synthesis and buffer preparation have finished.
       const when=ctx.currentTime,advanced=elapsed?elapsed():when-capturedAt;

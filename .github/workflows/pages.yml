@@ -28,7 +28,7 @@ jobs:
         run: |
           mkdir _site
           cp index.html style.css LICENSE _site/
-          cp app.js audio.js simulation.js i18n.js continuous-*.js cycle-*.js effects*.js field-evolution.js loops.js recorder-worklet.js recording*.js stateful-*.js tempo*.js wheel-controls.js _site/
+          cp app.js audio.js simulation.js i18n.js continuous-*.js cycle-*.js effects*.js field-*.js loops.js recorder-worklet.js recording*.js stateful-*.js tempo*.js wheel-controls.js _site/
           cp -R assets _site/assets
           touch _site/.nojekyll
       - name: Upload site
