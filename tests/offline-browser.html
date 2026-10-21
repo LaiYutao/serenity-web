@@ -1,6 +1,6 @@
 <!doctype html><meta charset="utf-8"><title>Serenity 离线一致性本地验证</title>
 <style>body{font:16px/1.6 system-ui;background:#f4f3ee;color:#252624;margin:36px;max-width:900px}button{padding:12px 20px;border:2px solid #252624;background:#e3e3de;font:inherit}pre{white-space:pre-wrap;border-top:1px solid;padding-top:20px}h1{font-size:26px}</style>
-<h1>Serenity 离线一致性本地验证</h1><p>直录缓冲 + 连续微分音 + 十二音三轨，包含已存在的 Filter、Delay 尾音、音量与压缩器状态。</p><label>场景 <select id="scenario"><option value="base">44.1kHz 三轨实时对照</option><option value="rate">48kHz 变速与音量过渡对照</option><option value="mute">静音过渡与遮罩对照</option><option value="loud">高增益压缩状态对照</option><option value="many">16 轨与删除后复用通道对照</option><option value="long">10 分钟离线性能</option></select></label> <button id="run">运行逐采样对比</button><pre id="result">尚未运行</pre>
+<h1>Serenity 离线一致性本地验证</h1><p>直录缓冲 + 连续微分音 + 十二音三轨，包含 Filter、Delay 尾音、Fade、音量与压缩器状态。</p><label>场景 <select id="scenario"><option value="base">44.1kHz 三轨实时对照</option><option value="rate">48kHz 变速与音量过渡对照</option><option value="mute">静音过渡与遮罩对照</option><option value="loud">高增益压缩状态对照</option><option value="many">16 轨与删除后复用通道对照</option><option value="long">10 分钟离线性能</option></select></label> <button id="run">运行逐采样对比</button><pre id="result">尚未运行</pre>
 <script type="module">
 import { SoundEngine } from '../audio.js';
 import { LoopRecorder } from '../loops.js';
@@ -22,6 +22,7 @@ button.onclick=async()=>{
    source.connect(track.playbackGain);recorder.connectEffects(track);track.gain.gain.value=volume;
    recorder.setEffects(track,'filter',{enabled:true,cutoff:950,resonance:.31,envMod:.53,decay:.19,repeats:4});
    recorder.setEffects(track,'delay',{enabled:true,time:.083,feedback:.61,mix:.44,tone:2200});
+   recorder.setEffects(track,'fade',{enabled:true,inTime:.3,outTime:.4,inCurve:.5,outCurve:-.4});
    recorder.tracks.push(track);source.start(when,offset);return track;
   };
   const loud=scenario==='loud';if(loud)sound.master.gain.setTargetAtTime(1,ctx.currentTime,.025);

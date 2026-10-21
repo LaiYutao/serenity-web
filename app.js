@@ -1,4 +1,4 @@
-import { FX_PARAMETERS, knobValue, knobPosition, createFXState, delaySeconds } from './effects-dsp.js';
+import { FX_PARAMETERS, knobValue, knobPosition, createFXState, delaySeconds, fadeEnvelopeAt } from './effects-dsp.js';
 import { Simulation, WIDTH, HEIGHT, STEP, GLYPHS, NOTES, clamp, selectionBounds, gridForViewport } from './simulation.js';
 import { SoundEngine, fieldSoundKey } from './audio.js';
 import { LoopRecorder, formatTime, loopGain, paginateTracks } from './loops.js';
@@ -544,7 +544,9 @@ const knobs=Array.from({length:4},(_,i)=>{
   return {knob,value,label,change,position};
 });
 installWheelControls(knobs);
-function fxValue(parameter,value){
+function fxValue(parameter,value,duration=1){
+  if(parameter.unit==='loopTime')return fxValue({unit:'seconds'},value*duration);
+  if(parameter.unit==='curve')return Math.abs(value)<1e-8?'Lin':(value>0?'+':'')+Math.round(value*100)+'%';
   if(parameter.unit==='hz')return value>=1000?(value/1000).toFixed(value>=10000?1:2)+'k':Math.round(value)+'Hz';
   if(parameter.unit==='seconds')return value<1?Math.round(value*1000)+'ms':value.toFixed(2)+'s';
   if(parameter.unit==='signed')return (value>0?'+':'')+Math.round(value*100)+'%';
@@ -554,22 +556,25 @@ function syncEffects(){
   const track=selectedLoop(),state=track?.fx??createFXState(),group=state[fxPage];
   document.querySelectorAll('[data-fx-page]').forEach(button=>button.setAttribute('aria-pressed',button.dataset.fxPage===fxPage));
   $('#fx-power').disabled=!track;$('#fx-power').setAttribute('aria-pressed',!!track&&group.enabled);
-  const clock=$('#fx-clock');clock.replaceChildren();clock.disabled=!track;
-  const choices=fxPage==='filter'?[[1,'1×'],[2,'2×'],[4,'4×'],[8,'8×']]:[[0,t('freeDelay')],[.5,'1/2'],[.25,'1/4'],[.125,'1/8'],[.0625,'1/16']];
+  const clock=$('#fx-clock');clock.replaceChildren();clock.disabled=!track||fxPage==='fade';
+  clock.setAttribute('aria-label',t(fxPage==='fade'?'fadeTiming':'effectTiming'));clock.title=fxPage==='fade'?t('fadeTiming'):'';
+  const choices=fxPage==='fade'?[[1,'1×']]:fxPage==='filter'?[[1,'1×'],[2,'2×'],[4,'4×'],[8,'8×']]:[[0,t('freeDelay')],[.5,'1/2'],[.25,'1/4'],[.125,'1/8'],[.0625,'1/16']];
   for(const [value,text] of choices){const option=document.createElement('option');option.value=value;option.textContent=text;option.disabled=fxPage==='delay'&&value>0&&!!track&&track.buffer.duration*value>16;clock.append(option);}
-  clock.value=String(fxPage==='filter'?group.repeats:group.sync);
+  clock.value=String(fxPage==='fade'?1:fxPage==='filter'?group.repeats:group.sync);
   FX_PARAMETERS[fxPage].forEach((parameter,i)=>{
     const {knob,value,label}=knobs[i],current=group[parameter.key],synced=fxPage==='delay'&&parameter.key==='time'&&!!group.sync;
     knob.disabled=!track||synced;knob.title=parameter.label+' · '+t('effectKnob');
     knob.setAttribute('aria-label',parameter.label);knob.setAttribute('aria-valuemin',parameter.min);knob.setAttribute('aria-valuemax',synced&&track?Math.max(parameter.max,delaySeconds(group,track.buffer.duration)):parameter.max);
     const displayed=synced&&track?delaySeconds(group,track.buffer.duration):current;knob.setAttribute('aria-valuenow',displayed);
-    const text=fxValue(parameter,displayed);knob.setAttribute('aria-valuetext',text);
+    const text=fxValue(parameter,displayed,track?.buffer.duration??1);knob.setAttribute('aria-valuetext',text);
+    if(fxPage==='fade')knob.title=parameter.label+' · '+t(parameter.unit==='loopTime'?'fadeTimeHint':'fadeCurveHint')+' · '+t('effectKnob');
     knob.style.setProperty('--knob-angle',`${-135+270*knobPosition(parameter,displayed)}deg`);value.textContent=track?text:'—';label.textContent=parameter.label;
   });
+  if(track)drawEditor(track);
 }
 document.querySelectorAll('[data-fx-page]').forEach(button=>button.onclick=()=>{knobDrag=null;fxPage=button.dataset.fxPage;syncEffects();});
 $('#fx-power').onclick=()=>{const track=selectedLoop();if(track){recorder.setEffects(track,fxPage,{enabled:!track.fx[fxPage].enabled});syncEffects();}};
-$('#fx-clock').onchange=event=>{const track=selectedLoop();if(track){recorder.setEffects(track,fxPage,{[fxPage==='filter'?'repeats':'sync']:Number(event.target.value),enabled:true});syncEffects();}};
+$('#fx-clock').onchange=event=>{const track=selectedLoop();if(track&&fxPage!=='fade'){recorder.setEffects(track,fxPage,{[fxPage==='filter'?'repeats':'sync']:Number(event.target.value),enabled:true});syncEffects();}};
 function syncEditor(){
   const track=recorder.tracks.find(item=>item.id===editTrackId);
   $('#loop-editor').hidden=false;
@@ -649,6 +654,14 @@ function drawPitchMap(ctx,track,repeats){
 function drawEditor(track){
   const canvas=$('#cycle-preview'),ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
   drawPitchMap(ctx,track,1);
+  if(track.fx.fade.enabled||fxPage==='fade'){
+    const fade=track.fx.fade,top=27,bottom=h-24;
+    ctx.save();ctx.beginPath();ctx.moveTo(0,bottom);
+    for(let x=0;x<=w;x+=2)ctx.lineTo(x,bottom-fadeEnvelopeAt(x/w,fade)*(bottom-top));
+    ctx.lineTo(w,bottom);ctx.closePath();ctx.fillStyle=fade.enabled?'#e5673215':'#ffffff08';ctx.fill();
+    ctx.beginPath();for(let x=0;x<=w;x+=2){const y=bottom-fadeEnvelopeAt(x/w,fade)*(bottom-top);x?ctx.lineTo(x,y):ctx.moveTo(x,y);}
+    ctx.strokeStyle=fade.enabled?'#e56732':'#8a8c85';ctx.lineWidth=4;ctx.stroke();ctx.restore();
+  }
   ctx.fillStyle='#e8e8e0';ctx.font='18px monospace';
   for(const fraction of [0,.5,1]){
     ctx.textAlign=fraction===0?'left':fraction===1?'right':'center';

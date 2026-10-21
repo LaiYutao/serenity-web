@@ -120,7 +120,7 @@ dialog{border:0;border-radius:6px;background:var(--panel);color:var(--ink);max-w
 #record-mode[aria-checked=false] [data-record-choice=audio]{transform:scaleX(.86);transform-origin:left center;text-shadow:0 1px #ffffff60}
 #record-mode[aria-checked=true] [data-record-choice=field]{transform:scaleX(.86);transform-origin:right center;text-shadow:0 1px #ffffff60}
 
-/* The same four hardware knobs control two independently stored effect banks. */
+/* Four hardware knobs control three independently stored effect banks. */
 .controls .loop-editor{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 .controls .loop-editor .parameter .slider-label{flex-wrap:wrap;gap:3px;font-size:10px}
 .controls .loop-editor .parameter .slider-label output{font-size:9px;padding:3px 4px}
@@ -129,6 +129,7 @@ dialog{border:0;border-radius:6px;background:var(--panel);color:var(--ink);max-w
 .controls .fx-toolbar .key-bank{width:auto;flex:none}
 .controls .fx-toolbar .key-bank button{min-height:25px;padding:4px 8px;font-size:10px}
 .controls .fx-toolbar #fx-power{width:27px;padding:4px}
+.fx-toolbar #fx-clock{margin-left:auto;flex:none}
 #fx-power .icon{width:15px;height:15px}
 #fx-clock{appearance:none;-webkit-appearance:none;border:0;width:56px;height:27px;padding:4px 19px 4px 6px;font:10px var(--mono);color-scheme:dark;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23d4d4cf' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:7px 5px}
 .fx-knobs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}

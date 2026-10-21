@@ -1,5 +1,6 @@
 import { cloneState } from './stateful-dsp.js';
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const FADE_KEYS=['inTime','inCurve','outTime','outCurve'];
 export const FX_PARAMETERS={
   filter:[
     {key:'cutoff',label:'Cutoff',min:20,max:20000,log:true,default:12000,unit:'hz'},
@@ -12,11 +13,18 @@ export const FX_PARAMETERS={
     {key:'feedback',label:'Feedback',min:0,max:.9,default:.35,unit:'percent'},
     {key:'mix',label:'Mix',min:0,max:1,default:.25,unit:'percent'},
     {key:'tone',label:'Tone',min:100,max:20000,log:true,default:6000,unit:'hz'}
+  ],
+  fade:[
+    {key:'inTime',label:'In Time',min:0,max:1,default:0,unit:'loopTime'},
+    {key:'inCurve',label:'In Curve',min:-1,max:1,default:0,unit:'curve'},
+    {key:'outTime',label:'Out Time',min:0,max:1,default:0,unit:'loopTime'},
+    {key:'outCurve',label:'Out Curve',min:-1,max:1,default:0,unit:'curve'}
   ]
 };
 export function createFXState(){return {
   filter:{enabled:false,cutoff:12000,resonance:.1,envMod:0,decay:.5,repeats:1},
-  delay:{enabled:false,time:.35,feedback:.35,mix:.25,tone:6000,sync:0}
+  delay:{enabled:false,time:.35,feedback:.35,mix:.25,tone:6000,sync:0},
+  fade:{enabled:false,inTime:0,inCurve:0,outTime:0,outCurve:0}
 };}
 export function knobValue(parameter,position){const t=clamp(position,0,1);return parameter.log?parameter.min*(parameter.max/parameter.min)**t:parameter.min+(parameter.max-parameter.min)*t;}
 export function knobPosition(parameter,value){return clamp(parameter.log?Math.log(value/parameter.min)/Math.log(parameter.max/parameter.min):(value-parameter.min)/(parameter.max-parameter.min),0,1);}
@@ -28,14 +36,22 @@ export function envelopeAt(time,origin,duration,repeats,decay){
 }
 export function effectiveCutoff(filter,envelope,sampleRate){return clamp(filter.cutoff*2**(filter.envMod*4*envelope),20,Math.min(20000,sampleRate*.45));}
 export function delaySeconds(delay,duration){return clamp(delay.sync?duration*delay.sync:delay.time,.001,16);}
+export function fadeShape(position,curve=0){return clamp(position,0,1)**(2**(clamp(curve,-1,1)*3));}
+// Times are proportions of the original cycle, never edits to its duration.
+// Overlapping ramps multiply smoothly instead of moving the loop boundaries.
+export function fadeEnvelopeAt(position,fade){
+  const p=clamp(position,0,1),a=clamp(fade.inTime,0,1),b=clamp(fade.outTime,0,1);
+  return (a>0?fadeShape(p/a,fade.inCurve):1)*(b>0?fadeShape((1-p)/b,fade.outCurve):1);
+}
 export class TrackEffectDSP{
   constructor(sampleRate,duration=1,origin=0){
     this.sampleRate=sampleRate;this.duration=duration;this.origin=origin;this.state=createFXState();
     this.current={...this.state.filter,...{time:.35,feedback:.35,mix:.25,tone:6000}};
     this.buffer=new Float32Array(Math.ceil(sampleRate*16)+2);this.cursor=0;this.z1=0;this.z2=0;this.echo=0;this.filterWet=0;this.delayWet=0;this.tick=0;this.active=false;this.toneAlpha=1-Math.exp(-2*Math.PI*6000/sampleRate);
     this.smoothing=1-Math.exp(-1/(sampleRate*.02));this.coefficients=[1,0,0,0,0];
+    this.fadeWet=0;this.fadeCurrent={...this.state.fade};
   }
-  setState(state){this.state={filter:{...this.state.filter,...state.filter},delay:{...this.state.delay,...state.delay}};}
+  setState(state){this.state={filter:{...this.state.filter,...state.filter},delay:{...this.state.delay,...state.delay},fade:{...this.state.fade,...state.fade}};}
   reset(){this.buffer.fill(0);this.z1=0;this.z2=0;this.echo=0;}
   snapshot(){
     const length=this.buffer.length,count=Math.min(length,Math.ceil(Math.max(this.current.time,delaySeconds(this.state.delay,this.duration))*this.sampleRate)+3);
@@ -49,7 +65,14 @@ export class TrackEffectDSP{
   }
   next(input,time){
     const {filter,delay}=this.state,c=this.current,s=this.smoothing;
-    if(!filter.enabled&&!delay.enabled&&this.filterWet<1e-6&&this.delayWet<1e-6){if(this.active){this.reset();this.active=false;}return input;}
+    let fadeGain=1;
+    if(this.state.fade.enabled||this.fadeWet>1e-6){
+      this.fadeWet+=((this.state.fade.enabled?1:0)-this.fadeWet)*s;
+      for(const key of FADE_KEYS)this.fadeCurrent[key]+=(this.state.fade[key]-this.fadeCurrent[key])*s;
+      const duration=Math.max(1/this.sampleRate,this.duration),position=(((time-this.origin)%duration)+duration)%duration/duration;
+      fadeGain=1+(fadeEnvelopeAt(position,this.fadeCurrent)-1)*this.fadeWet;
+    }
+    if(!filter.enabled&&!delay.enabled&&this.filterWet<1e-6&&this.delayWet<1e-6){if(this.active){this.reset();this.active=false;}return input*fadeGain;}
     this.active=true;
     c.cutoff+=(filter.cutoff-c.cutoff)*s;c.resonance+=(filter.resonance-c.resonance)*s;c.envMod+=(filter.envMod-c.envMod)*s;c.decay+=(filter.decay-c.decay)*s;
     c.feedback+=(delay.feedback-c.feedback)*s;c.mix+=(delay.mix-c.mix)*s;c.tone+=(delay.tone-c.tone)*s;
@@ -73,6 +96,6 @@ export class TrackEffectDSP{
     this.echo+=(echo-this.echo)*this.toneAlpha;
     this.buffer[this.cursor]=signal*this.delayWet+this.echo*c.feedback;this.cursor=(this.cursor+1)%length;
     const wet=this.delayWet*c.mix;
-    return signal*(1-wet)+this.echo*wet;
+    return (signal*(1-wet)+this.echo*wet)*fadeGain;
   }
 }

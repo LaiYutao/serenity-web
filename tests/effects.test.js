@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TrackEffectDSP, createFXState, envelopeAt, effectiveCutoff, delaySeconds, FX_PARAMETERS, knobPosition, knobValue } from '../effects-dsp.js';
+import { TrackEffectDSP, createFXState, envelopeAt, effectiveCutoff, delaySeconds, FX_PARAMETERS, knobPosition, knobValue, fadeShape, fadeEnvelopeAt } from '../effects-dsp.js';
 
 const warm=(dsp,rate)=>{for(let i=0;i<rate;i++)dsp.next(0,i/rate);};
 const amplitude=(dsp,hz,rate)=>{
@@ -8,10 +8,51 @@ const amplitude=(dsp,hz,rate)=>{
  for(let i=0;i<rate;i++){const phase=2*Math.PI*hz*i/rate,value=dsp.next(Math.sin(phase),(i+rate)/rate);if(i>rate/2){real+=value*Math.sin(phase);imag+=value*Math.cos(phase);}}
  return Math.hypot(real,imag)*4/rate;
 };
-test('both groups default to exact passthrough and own independent per-track settings',()=>{
+test('all three groups default to exact passthrough and own independent per-track settings',()=>{
  const a=createFXState(),b=createFXState();a.filter.cutoff=100;assert.equal(b.filter.cutoff,12000);
  const dsp=new TrackEffectDSP(8000,4);
  for(let i=0;i<8000;i++){const x=Math.sin(i*.123)*.2;assert.equal(dsp.next(x,i/8000),x);}
+});
+
+test('fade ramps preserve a full cycle, reach zero at its ends and handle overlap continuously',()=>{
+ const fade={inTime:.25,outTime:.5,inCurve:0,outCurve:0};
+ assert.equal(fadeEnvelopeAt(0,fade),0);assert.equal(fadeEnvelopeAt(.125,fade),.5);
+ assert.equal(fadeEnvelopeAt(.25,fade),1);assert.equal(fadeEnvelopeAt(.5,fade),1);
+ assert.equal(fadeEnvelopeAt(.75,fade),.5);assert.equal(fadeEnvelopeAt(1,fade),0);
+ assert.equal(fadeEnvelopeAt(.5,{...fade,inTime:1,outTime:1}),.25);
+ for(let i=0;i<=1000;i++){const g=fadeEnvelopeAt(i/1000,{...fade,inTime:.8,outTime:.9});assert.ok(g>=0&&g<=1);}
+ assert.equal(fadeEnvelopeAt(0,{...fade,inTime:0,outTime:0}),1);
+});
+test('one curve parameter is continuous, monotonic and preserves exact endpoints',()=>{
+ for(const curve of [-1,-.5,0,.5,1]){
+  assert.equal(fadeShape(0,curve),0);assert.equal(fadeShape(1,curve),1);
+  let previous=0;for(let i=0;i<=100;i++){const value=fadeShape(i/100,curve);assert.ok(value>=previous);previous=value;}
+ }
+ assert.equal(fadeShape(.5,0),.5);assert.ok(fadeShape(.5,1)<.5);assert.ok(fadeShape(.5,-1)>.5);
+});
+test('fade follows the track origin and tempo without changing duration or other effect banks',()=>{
+ const sr=8000,dsp=new TrackEffectDSP(sr,4,3),state=createFXState();
+ state.fade={enabled:true,inTime:.25,outTime:.25,inCurve:0,outCurve:0};dsp.setState(state);warm(dsp,sr);
+ assert.equal(dsp.duration,4);
+ assert.ok(Math.abs(dsp.next(1,3.5)-.5)<1e-10);
+ assert.ok(Math.abs(dsp.next(1,7.5)-.5)<1e-10);
+ dsp.duration=2;assert.ok(Math.abs(dsp.next(1,3.25)-.5)<1e-10);
+ dsp.setState({delay:{enabled:true,mix:0}});assert.equal(dsp.state.fade.inTime,.25);
+ assert.equal(state.fade.inTime,.25);
+ dsp.setState({fade:{enabled:false}});warm(dsp,sr);assert.ok(Math.abs(dsp.next(.7,3)-.7)<1e-10);
+});
+test('fade envelopes apply to delay tails as well as dry signal',()=>{
+ const sr=8000,plain=new TrackEffectDSP(sr,1),faded=new TrackEffectDSP(sr,1);
+ for(const dsp of [plain,faded])dsp.setState({delay:{enabled:true,time:.02,mix:.8,feedback:.6,tone:3000}});
+ faded.setState({fade:{enabled:true,inTime:.2,outTime:.3,inCurve:.4,outCurve:-.3}});
+ for(let i=0;i<sr;i++){plain.next(0,i/sr);faded.next(0,i/sr);}
+ let tail=false;
+ for(let i=0;i<sr;i++){
+  const time=1+i/sr,input=i===sr-400?1:0,a=plain.next(input,time),b=faded.next(input,time);
+  assert.ok(Math.abs(b-a*fadeEnvelopeAt(i/sr,faded.state.fade))<1e-10);
+  if(i>sr-400&&Math.abs(a)>.001){tail=true;assert.ok(Math.abs(b)<Math.abs(a));}
+ }
+ assert.ok(tail);
 });
 test('lowpass cutoff attenuates high frequencies; resonance strengthens the cutoff region',()=>{
  const rate=8000,low=new TrackEffectDSP(rate,4);low.setState({filter:{enabled:true,cutoff:400,resonance:0}});warm(low,rate);
