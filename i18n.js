@@ -41,7 +41,7 @@ export const messages = {
   trackEffects: ['音轨效果', 'Track effects'],
   effectTiming: ['包络触发次数或延迟同步比例', 'Envelope repeats or delay sync division'],
   effectPower: ['启用或旁通当前效果组', 'Enable or bypass this effect group'],
-  effectKnob: ['上下拖动或滚轮调节；Shift 细调；双击复位', 'Drag vertically or scroll; hold Shift for fine adjustment; double-click to reset'],
+  effectKnob: ['上下拖动；单击后滚轮调节；Shift 细调；双击复位', 'Drag vertically; click to select for scrolling; hold Shift for fine adjustment; double-click to reset'],
   freeDelay: ['自由', 'Free'],
   recordMode: ['录入方式', 'Recording mode'],
   fieldLayer: ['叠场', 'Field'],

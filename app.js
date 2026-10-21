@@ -6,6 +6,7 @@ import { snapshotField, maskFromDrag } from './cycle-dsp.js';
 import { translate, readLanguage } from './i18n.js';
 import { MixCapture, encodeWav, planCycleExport, loadExportModule } from './recording-export.js';
 import { snapshotCycle, startOfflineRender } from './recording-offline.js';
+import { installWheelControls } from './wheel-controls.js';
 
 const $=selector=>document.querySelector(selector);
 let language='zh', noticeKey='';
@@ -534,15 +535,15 @@ const knobs=Array.from({length:4},(_,i)=>{
   knob.addEventListener('pointermove',event=>{if(knobDrag?.knob===knob&&knobDrag.id===event.pointerId){const delta=(knobDrag.y-event.clientY)/(event.shiftKey?1200:120);knobDrag.position=clamp(knobDrag.position+delta,0,1);knobDrag.y=event.clientY;change(knobDrag.position);}});
   const release=event=>{if(knobDrag?.knob===knob){knobDrag=null;if(knob.hasPointerCapture(event.pointerId))knob.releasePointerCapture(event.pointerId);}};
   knob.addEventListener('pointerup',release);knob.addEventListener('pointercancel',release);
-  knob.addEventListener('wheel',event=>{if(knob.disabled)return;event.preventDefault();change(position()+(event.deltaY<0?1:-1)*(event.shiftKey?.002:.02));},{passive:false});
   knob.addEventListener('keydown',event=>{
     const moves={ArrowUp:1,ArrowRight:1,ArrowDown:-1,ArrowLeft:-1,PageUp:10,PageDown:-10};
     if(event.key==='Home'||event.key==='End'){event.preventDefault();change(event.key==='Home'?0:1);}
     else if(event.key in moves){event.preventDefault();change(position()+moves[event.key]*(event.shiftKey?.001:.01));}
   });
   knob.addEventListener('dblclick',()=>change(knobPosition(FX_PARAMETERS[fxPage][i],FX_PARAMETERS[fxPage][i].default)));
-  return {knob,value,label};
+  return {knob,value,label,change,position};
 });
+installWheelControls(knobs);
 function fxValue(parameter,value){
   if(parameter.unit==='hz')return value>=1000?(value/1000).toFixed(value>=10000?1:2)+'k':Math.round(value)+'Hz';
   if(parameter.unit==='seconds')return value<1?Math.round(value*1000)+'ms':value.toFixed(2)+'s';
