@@ -73,7 +73,7 @@ export class LoopRecorder {
   }
   connectEffects(track){
     track.fx=createFXState();track.effects=this.effectsFactory(this.sound.context,track.buffer.duration,track.startedAt);
-    track.playbackGain.connect(track.effects.input);track.effects.output.connect(track.gain);track.gain.connect(this.sound.master);
+    track.playbackGain.connect(track.effects.input);track.effects.output.connect(track.gain);track.gain.connect(this.sound.tracksBus??this.sound.master);
   }
   setEffects(track,group,values){Object.assign(track.fx[group],values);track.effects.setState(track.fx);}
   resetEffects(track){track.fx=createFXState();track.effects.setState(track.fx);track.effects.reset();}

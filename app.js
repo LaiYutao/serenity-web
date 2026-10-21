@@ -4,6 +4,7 @@ import { SoundEngine, fieldSoundKey } from './audio.js';
 import { LoopRecorder, formatTime, loopGain, paginateTracks } from './loops.js';
 import { snapshotField, maskFromDrag } from './cycle-dsp.js';
 import { translate, readLanguage } from './i18n.js';
+import { MixCapture, encodeWav, planCycleExport, loadExportModule } from './recording-export.js';
 
 const $=selector=>document.querySelector(selector);
 let language='zh', noticeKey='';
@@ -12,6 +13,7 @@ try{language=readLanguage(window.localStorage);}catch{}
 const t=(key,values)=>translate(language,key,values);
 const sim=new Simulation(), sound=new SoundEngine();
 const recorder=new LoopRecorder(sound);
+let exportCapture=null,exportMode='live',cycleLocked=false,exportBusy=false;
 const canvas=$('#field'), context=canvas.getContext('2d',{alpha:false});
 const point={x:119,y:69}, keys=new Set();
 let started=false, paused=false, type='circle', amplitude=1, frequency=.25;
@@ -77,6 +79,7 @@ function applyLanguage(next){
   drawWaveform();renderTracks();
   notify(noticeKey);
   if(!$('#copy-toast').hidden)$('#copy-toast').textContent=t(emailToastKey);
+  syncExport();if($('#export-dialog').open)syncExportDialog();
 }
 function selected(){return sim.at(point.x,point.y);}
 function selectType(next){type=next;document.querySelectorAll('[data-type]').forEach(button=>{const active=button.dataset.type===type;button.classList.toggle('active',active);button.setAttribute('aria-pressed',active);});}
@@ -281,7 +284,7 @@ function keyboardAdjust(key){
   adjust();
 }
 window.addEventListener('keydown',event=>{
-  if(event.ctrlKey||event.metaKey||event.altKey||$('#help-dialog').open||event.target.matches('input,textarea,select'))return;
+  if(event.ctrlKey||event.metaKey||event.altKey||$('#help-dialog').open||$('#export-dialog').open||event.target.matches('input,textarea,select'))return;
   const key=event.key.toLowerCase();
   if(key==='escape'&&selectingRegion){event.preventDefault();cancelRegionDrag();selectingRegion=false;syncRegion();return;}
   if(!['w','a','s','d','j','k','m','r','x',' '].includes(key))return;
@@ -363,9 +366,10 @@ $('#record').onclick=async()=>{
   finally{recordBusy=false;$('#record').disabled=false;syncRecord();}
 };
 function syncRecord(){
+  $('#record').disabled=recordBusy||cycleLocked;
   $('#record').classList.toggle('recording',recorder.recording);
   $('#record').setAttribute('aria-pressed',recorder.recording);
-  $('#record-mode').disabled=recordBusy||recorder.recording;
+  $('#record-mode').disabled=recordBusy||recorder.recording||cycleLocked;
   $('#record-mode').setAttribute('aria-checked',recordMode==='audio');
   $('#record-mode').title=t('recordMode')+' · '+t(recordMode==='audio'?'directRecord':'fieldLayer');
   $('.record-rocker').dataset.mode=recordMode;
@@ -397,7 +401,92 @@ function renderTracks(){
     const time=document.createElement('span');time.textContent='—:—';empty.append(number,blank,time);list.append(empty);
   }
   syncTrackControls();syncRecord();syncEditor();
+  if($('#export-dialog').open)syncExportDialog();
 }
+
+function syncExport(){
+  const button=$('#export-audio'),active=!!exportCapture;
+  button.setAttribute('aria-pressed',active);
+  button.disabled=exportBusy;
+  button.setAttribute('aria-label',t(active?'exportStop':'exportAudio'));
+  button.title=t(active?'exportStop':'exportAudio');
+}
+function syncExportDialog(){
+  $('#export-error').hidden=true;
+  document.querySelectorAll('[data-export-mode]').forEach(button=>button.setAttribute('aria-pressed',button.dataset.exportMode===exportMode));
+  $('#export-description').textContent=t(exportMode==='live'?'exportLiveDescription':'exportCycleDescription');
+  $('#export-cycle-options').hidden=exportMode!=='cycle';
+  $('#start-export').textContent=t(exportMode==='cycle'?'exportStartCycle':'exportStart');
+  const select=$('#export-anchor'),previous=Number(select.value)||editTrackId;
+  select.replaceChildren();
+  for(const [index,track] of recorder.tracks.entries()){
+    if(loopGain(track,recorder.tracks)<=0)continue;
+    const option=document.createElement('option');option.value=track.id;
+    option.textContent=t('exportAnchorOption',{number:String(index+1).padStart(2,'0'),duration:track.buffer.duration.toFixed(2)});select.append(option);
+  }
+  if([...select.options].some(option=>Number(option.value)===previous))select.value=previous;
+  $('#start-export').disabled=false;
+  if(exportMode==='cycle'){
+    try{
+      if(recorder.recording)throw new Error('exportTrackBusy');
+      const plan=planCycleExport(recorder.tracks,Number(select.value),sound.context?.sampleRate??48000,sound.context?.currentTime??0);
+      $('#export-cycle-duration').textContent=plan.truncated?t('exportCycleTruncated'):t('exportDuration',{time:formatTime(plan.duration)+` (${plan.duration.toFixed(2)}s)`,count:plan.trackIds.length});
+      if(plan.truncated)$('#start-export').textContent=t('exportStartTruncated');
+    }catch(error){$('#export-cycle-duration').textContent=t(error.message);$('#start-export').disabled=true;}
+  }
+}
+function lockCycleExport(locked){
+  cycleLocked=locked;$('.loop-editor').inert=locked;syncRecord();
+}
+function downloadWav(samples,sampleRate,mode=exportMode){
+  const blob=new Blob([encodeWav(samples,sampleRate)],{type:'audio/wav'}),url=URL.createObjectURL(blob),link=document.createElement('a');
+  const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+  link.href=url;link.download=`serenity-${mode}-${stamp}.wav`;document.body.append(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+async function startAudioExport(){
+  if(exportBusy||exportCapture)return;
+  exportBusy=true;$('#start-export').disabled=true;syncExport();
+  let branch=null,capture=null,fileMode=exportMode,plannedFrames=null;
+  try{
+    await sound.start();
+    await loadExportModule(sound);
+    const options={};
+    if(exportMode==='cycle'){
+      if(recorder.recording)throw new Error('exportTrackBusy');
+      const plan=planCycleExport(recorder.tracks,Number($('#export-anchor').value),sound.context.sampleRate,sound.context.currentTime);
+      plannedFrames=plan.frames;if(plan.truncated)fileMode='cycle-truncated';
+      lockCycleExport(true);
+      const gain=sound.context.createGain(),limiter=sound.context.createDynamicsCompressor();gain.gain.value=sound.muted?0:sound.volume;
+      for(const key of ['threshold','knee','ratio','attack','release'])limiter[key].value=sound.limiter[key].value;
+      sound.tracksBus.connect(gain);gain.connect(limiter);branch={gain,limiter};
+      options.input=limiter;options.when=plan.when;options.duration=plan.duration;
+    }
+    capture=new MixCapture(sound);exportCapture=capture;
+    await capture.start(options);
+    $('#export-dialog').close();notify(fileMode==='cycle-truncated'?'exportTruncatedStarted':exportMode==='cycle'?'exportCycleStarted':'exportStarted');
+    void capture.done.then(({samples,sampleRate})=>{
+      if(samples.length<sampleRate*.1)throw new Error('exportEmpty');
+      const name=plannedFrames&&samples.length<plannedFrames?fileMode+'-partial':fileMode;
+      downloadWav(samples,sampleRate,name);notify('exportSaved');
+    }).catch(error=>notify(['exportEmpty'].includes(error.message)?error.message:'exportFailed')).finally(()=>{
+      if(branch){sound.tracksBus.disconnect(branch.gain);branch.gain.disconnect();branch.limiter.disconnect();}
+      exportCapture=null;lockCycleExport(false);syncExport();
+    });
+  }catch(error){
+    if(branch){sound.tracksBus.disconnect(branch.gain);branch.gain.disconnect();branch.limiter.disconnect();}
+    exportCapture=null;lockCycleExport(false);notify(['exportNoTracks','exportTrackBusy'].includes(error.message)?error.message:'exportFailed');
+    if($('#export-dialog').open){$('#export-error').textContent=t(noticeKey);$('#export-error').hidden=false;}
+  }finally{exportBusy=false;syncExport();$('#start-export').disabled=false;}
+}
+$('#export-audio').onclick=()=>{
+  if(exportCapture){exportBusy=true;syncExport();void exportCapture.stop().catch(()=>{}).finally(()=>{exportBusy=false;syncExport();});return;}
+  keys.clear();clearTimeout(pendingPlant);$('#export-anchor').replaceChildren();syncExportDialog();$('#export-dialog').showModal();
+};
+document.querySelectorAll('[data-export-mode]').forEach(button=>button.onclick=()=>{exportMode=button.dataset.exportMode;syncExportDialog();});
+$('#export-anchor').onchange=syncExportDialog;
+$('#start-export').onclick=()=>void startAudioExport();
+$('#close-export').onclick=$('#cancel-export').onclick=()=>$('#export-dialog').close();
 function syncTrackControls(){
   for(const track of visibleTracks)track.display.classList.toggle('muted',loopGain(track,recorder.tracks)===0);
   const track=recorder.tracks.find(item=>item.id===editTrackId);

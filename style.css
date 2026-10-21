@@ -219,3 +219,15 @@ dialog{border:0;border-radius:6px;background:var(--panel);color:var(--ink);max-w
 .help-download{margin:18px 0 0}
 .help-download a{color:var(--ink);font-weight:600;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px}
 .help-download a:focus-visible{outline:2px solid var(--ink);outline-offset:5px}
+.track-pagination .export-key{margin-right:7px}
+#export-audio .icon{width:16px;height:16px}
+#export-audio .export-stop,#export-audio[aria-pressed=true] .export-download{display:none}
+#export-audio[aria-pressed=true] .export-stop{display:block}
+#export-audio[aria-pressed=true]{color:var(--accent)}
+.export-modes{margin:20px 0 12px;width:100%}
+.export-modes button{flex:1}
+#export-cycle-options label{display:block;font-size:12px;margin-bottom:8px}
+#export-anchor{width:100%;padding:8px 34px 8px 10px;border:0;color-scheme:dark;font-size:12px;appearance:none;background:var(--screen) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%23d4d4cf' stroke-width='1.3'/%3E%3C/svg%3E") no-repeat right 12px center}
+.export-actions{margin-top:18px;width:100%}
+.export-actions button{flex:1}
+.loop-editor[inert]{opacity:.65}

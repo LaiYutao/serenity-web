@@ -17,6 +17,7 @@ export class SoundEngine {
       this.master=ctx.createGain();this.master.gain.value=0;
       this.limiter=ctx.createDynamicsCompressor();this.limiter.threshold.value=-3;this.limiter.knee.value=3;this.limiter.ratio.value=12;this.limiter.attack.value=.003;this.limiter.release.value=.15;
       this.master.connect(this.limiter).connect(ctx.destination);
+      this.tracksBus=ctx.createGain();this.tracksBus.connect(this.master);
       this.live=ctx.createGain();this.live.gain.value=0;this.live.connect(this.master);
       // Match the original fundamental + four partials. Oscillators run on
       // the browser audio thread independently of the visual frame rate.
