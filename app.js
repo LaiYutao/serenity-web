@@ -68,6 +68,10 @@ function applyLanguage(next){
   document.querySelectorAll('[data-i18n]').forEach(element=>{element.textContent=t(element.dataset.i18n);});
   document.querySelectorAll('[data-i18n-aria]').forEach(element=>{element.setAttribute('aria-label',t(element.dataset.i18nAria));});
   document.querySelectorAll('[data-language]').forEach(button=>button.setAttribute('aria-pressed',button.dataset.language===language));
+  const manual=$('#download-manual');
+  manual.href=`assets/manual/Serenity-User-Guide-${language.toUpperCase()}.pdf`;
+  manual.download=`Serenity-User-Guide-${language.toUpperCase()}.pdf`;
+  manual.hreflang=language==='en'?'en':'zh-CN';
   syncSelection();syncRegion();refreshStatus();setMode(sound.mode);
   $('#mute').setAttribute('aria-label',t('masterMute'));
   drawWaveform();renderTracks();
