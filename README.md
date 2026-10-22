@@ -49,8 +49,9 @@ npm test
 - 「叠场」保存当前场与取声选区的独立声音演变；「直录」记录当前画面的实时声音，可以边录边调整参数。录入不包含已有音轨。
 - 下方每页显示三轨。点击音轨，在右侧调整静音、独听、音量、时间遮罩和音高范围。音量 100 为原响度，可调至 200。
 - 新录入的叠场音轨在秒数与循环标识之间有一个实心三角形。单击可唤回录入时的场、取声框、发声模式及波形，替换当前场；已有音轨继续独立播放，后加的音轨速度、遮罩和效果不会写回场。直录音轨不提供此功能。
-- 每轨速度独立，范围 0.25–4×。Normal 同时改变速度和音高，Stretch 保持音高；直录在极端倍率下可能有时间伸缩的音色变化。
-- Filter 提供 Cutoff、Reso、Env Mod、Decay；Delay 提供 Time、Feedback、Mix、Tone；Fade 提供 In Time、In Curve、Out Time、Out Curve。三组独立保存且可以同时开启，切换标签只切换控制页。调整旋钮会启用当前组，电源键旁通当前组。
+- 每轨的 Normal 与 Stretch 各自记住 0.25–4× 的数值，并始终同时生效。Normal 同时改变速度和音高，Stretch 在此基础上只改变速度；按钮只选择正在编辑的参数，切换不改变声音或播放位置。最终速度为两者相乘，例如 Normal 2×、Stretch 0.5× 会保持原节奏、音高升高八度。工程文件保留两个数值；直录在极端倍率下可能有时间伸缩的音色变化。
+- Filter 提供 Cutoff、Reso、Env Mod、Decay；Delay 提供 Time、Feedback、Mix、Tone；Fade 提供 In Time、In Curve、Out Time、Out Curve；Drive 提供 Drive、Fuzz、Tone、Mix。四组独立保存且可以同时开启，切换标签只切换控制页。调整旋钮会启用当前组，电源键旁通当前组。
+- Drive 位于 Filter 之前：Drive 调节失真强度，Fuzz 从柔和饱和过渡到更硬、更毛躁的削波，Tone 调节明暗，Mix 混合原声与效果声。默认关闭，调整旋钮会开启；工程保存、实时与循环导出均包含此效果。
 - Fade 每个音轨周期从零渐入、向零渐出。Time 按周期比例保存，显示为实际时长，变速后跟随周期；Curve 的 Lin 为线性，正负值连续改变弯曲程度。谱图橙线显示启用的包络。Fade 不裁剪、不拉伸音轨，也不改变循环长度和 Mask；它同时作用于本轨干声与回声。两端渐变重叠时会平滑相乘，中间音量也可能降低。
 - 上方速度控制实时画面及对应声音。负速度反转当前波场的演变方向，不撤销场源操作，也不影响已有音轨。
 - 「启动 / 暂停」只控制实时画面与其声音；已录音轨继续播放。
@@ -61,7 +62,7 @@ npm test
 音轨计数左侧的下载键提供两种 WAV 导出：
 
 - **实时导出**：点击开始收录当前听到的混音，包括实时场、已有音轨及演奏中的参数变化；再点下载键停止并下载，最长 10 分钟。
-- **循环导出**：选择起点音轨，复制当前音频状态，离线计算从它下一轮起点开始的共同周期。只导出已有音轨，保留开始时的速度、音量、遮罩和 Filter / Delay / Fade，无需等待音乐正常播完。计算期间锁定音轨编辑；再点下载键会取消计算，不下载半成品。
+- **循环导出**：选择起点音轨，复制当前音频状态，离线计算从它下一轮起点开始的共同周期。只导出已有音轨，保留开始时的速度、音量、遮罩和 Drive / Filter / Delay / Fade，无需等待音乐正常播完。计算期间锁定音轨编辑；再点下载键会取消计算，不下载半成品。
 
 循环导出计算全部分页中的可听音轨。共同周期超过 10 分钟时，面板明确标注截断，导出前 10 分钟音频，文件名包含 `truncated`。微分音载波与效果尾音不保证首尾无缝。音轨只保留在当前页面；WAV 保存的是声音，不能还原可编辑项目，刷新或关闭前应先导出。
 
@@ -90,3 +91,21 @@ npm test
 - `tests/simulation.test.js`：传播、叠加、参数边界、音乐映射和重置测试。
 
 原作及本移植遵循 MIT 许可，保留原作者版权声明。
+
+### 工程存档 / Project files
+
+下载键弹窗中的 **保存工程** 会下载一个 `.serenity` 文件，包含当前场、场源历史与框选区域、原始及处理后的音频、每轨速度与 Normal/Stretch、音量、静音/独奏、Mask、Drive/Filter/Delay/Fade 参数，以及叠场音轨的可唤回场快照。
+
+点击下载键旁的 **上传键**，选择工程文件即可继续编辑。文件在本地读取，不会上传到服务器。打开会替换当前现场，以暂停状态恢复播放位置和各轨的错开关系；按播放继续。效果尾音从头建立。正在录制、处理音轨或导出时，请先结束该操作再存档或打开工程。工程格式带版本检查，单文件上限 768 MB。
+
+Choose **Save project** in the download dialog to save a self-contained `.serenity` file. The adjacent **upload** button opens it locally, replacing the session and restoring the field, editable audio, track settings, field-recall snapshots and relative playback positions. Projects load paused; press play to continue. Effect tails restart. Finish recording, track processing or export before saving/opening. Files are version checked and limited to 768 MB; no server upload is involved.
+
+### Step 采样与基础音色 / Step sampling and timbres
+
+上方速度区的 **Normal / Step** 与下方音轨速度模式横向对齐，各自记住独立数值，且两个参数始终同时生效。按钮只切换正在编辑的参数，不启停采样、不重置采样时钟或声音相位。Normal 控制场的演变速度、方向及整体音高；Step 只调画面转成声音的采样疏密，沿用 Normal 的画面速度。Step 范围为 0.05×–4×，滑条采用对数刻度。1× 每个模拟帧取一次，0.25× 每四帧取一次，0.05× 每二十帧取一次；取样之间保持上次声音参数，形成阶梯变化。它改变的是声音控制数据的更新间隔，不是 WAV 的音频采样率。叠场音轨、场唤回和工程文件均保留此设置。
+
+波形菜单新增两个基础短音色：**气泡 / Bubble** 以基音为主，圆润、短促；**电弦 / Electric** 参考 CC0 FreePats 单音清音电吉他的泛音和衰减，使用带延音的弦振动模型。两者跟随声音采样帧：Bubble 保留不超过 90 ms 的短尾音；Electric 在新帧之间平滑衔接，保留弦的主体，并在约 6 ms 内跟随新的声音强度。Electric 建议从 Normal 1×、Step 0.5× 开始试听（仍是两个独立参数）；已校准常用速度下的响度，避免必须调到 4× 才能听清。旧工程中的 Pluck 作为 Bubble 兼容读取。支持十二音／微分音、直录／叠场、音轨处理及音频导出。
+
+The upper **Normal / Step** bank aligns with the track tempo bank. Normal keeps the existing field speed/direction/pitch control. Step changes only how densely the field is sampled for sound, holding the last values between samples. Step spans 0.05×–4× on a logarithmic slider. At 1× it samples every simulation frame; at 0.25× every four frames; at 0.05× every twenty frames. Both parameters remain active and remember their values. The buttons only select which parameter to edit; switching does not reset sampling or audio phase. This changes control updates, not the audio file sample rate. **Bubble** emphasizes the fundamental for a round, short tone. **Electric** uses modal amplitudes and decay times informed by CC0 FreePats isolated clean-guitar notes. Bubble keeps its 90 ms tail; Electric sustains between sampled frames, reconnects smoothly and tracks new intensity in about 6 ms. Try Normal 1× / Step 0.5× as an Electric starting point; the parameters remain independent. Both stay audible at normal speeds. Legacy Pluck projects remain readable as Bubble. The timbres survive field capture and project storage.
+
+Electric 单音参考 / isolated-note reference: [FreePats FSBS Clean Electric Guitar](https://freepats.zenvoid.org/ElectricGuitar/clean-electric-guitar.html), bridge-pickup B4, CC0. The app synthesizes the voice; reference recordings are not bundled.

@@ -1,11 +1,13 @@
+import { isPluckedWaveform } from './pluck-dsp.js';
+import { SampleClock, sampleInterval } from './sampling.js';
 import { NOTES, musicMapping } from './simulation.js';
 import { createGainNode, createBufferNode } from './stateful-audio.js';
 
 export function fieldSoundKey(sim,sound,regions){
-  return JSON.stringify([sound.mode,sound.waveform,sound.speed,sim.direction,sim.width,sim.height,sim.fields.map(f=>[f.type,f.x,f.y,f.amplitude,f.frequency,f.revisionTime]),regions]);
+  return JSON.stringify([sound.mode,sound.waveform,sound.speed,sound.stepRate??1,sim.direction,sim.width,sim.height,sim.fields.map(f=>[f.type,f.x,f.y,f.amplitude,f.frequency,f.revisionTime]),regions]);
 }
 export class SoundEngine {
-  constructor({sampleRate}={}) { this.sampleRate=sampleRate;this.context=null;this.muted=false;this.volume=.25;this.mode='cluster';this.running=false;this.waveform='original';this.speed=1; }
+  constructor({sampleRate}={}) { this.sampleRate=sampleRate;this.context=null;this.muted=false;this.volume=.25;this.mode='cluster';this.running=false;this.waveform='original';this.speed=1;this.samplingMode='normal';this.stepRate=1;this.sampleClock=new SampleClock(); }
   start(){
     if(!this.starting)this.starting=this.initialize().catch(error=>{this.context?.close();this.context=null;throw error;}).finally(()=>{this.starting=null;});
     return this.starting;
@@ -43,10 +45,11 @@ export class SoundEngine {
     await this.context.resume();
   }
   setWaveform(type) {
-    if(!['original','sine','triangle','sawtooth','square'].includes(type))return;
+    if(type==='pluck')type='bubble';
+    if(!['original','sine','triangle','sawtooth','square','pluck','bubble','electric'].includes(type))return;
     this.waveform=type;if(!this.context)return;
-    for(const voice of this.voices){if(!voice)continue;if(type==='original')voice.oscillator.setPeriodicWave(this.originalWave);else voice.oscillator.type=type;}
-    this.invalidateContinuous();
+    for(const voice of this.voices){if(!voice)continue;if(type==='original')voice.oscillator.setPeriodicWave(this.originalWave);else if(!isPluckedWaveform(type))voice.oscillator.type=type;}
+    this.sampleClock.reset();this.invalidateContinuous();
   }
   createTrackGain(){return createGainNode(this.context);}
   connectTrack(gain){const slot=Array.from({length:16},(_,i)=>i).find(i=>!this.mixSlots.has(i));if(slot===undefined)throw new Error('recordLimit');this.mixSlots.add(slot);gain.connect(this.tracksBus,0,slot);return slot;}
@@ -69,9 +72,10 @@ export class SoundEngine {
     return {
       slot,
       connect:target=>{destination=target;this.continuous.connect(target,slot);return target;},
-      start:(when,offset)=>this.continuous.port.postMessage({type:'add',when,slot,waveform:waveform==='original'&&map.mode==='average'?'sine':waveform,profile:{...continuation,frequencies,weights:map.weights,pitchRate:map.pitchRate,mode:map.mode,duration,offset},adopt:this.mode==='average'&&this.liveKey===liveKey}),
+      restore:state=>this.continuous.port.postMessage({type:'restore',slot,state}),
+      start:(when,offset)=>this.continuous.port.postMessage({type:'add',when,slot,waveform:waveform==='original'&&map.mode==='average'?'sine':waveform,profile:{...continuation,frequencies,weights:map.weights,pitchRate:map.pitchRate,mode:map.mode,duration,offset,sampleInterval:map.sampleInterval??0,pluckInterval:map.pluckInterval??(map.sampleInterval||.1/(map.pitchRate??1))},adopt:this.mode==='average'&&this.liveKey===liveKey}),
       edit:settings=>this.continuous.port.postMessage({type:'edit',slot,settings}),
-      setRate:(rate,preservePitch=true)=>this.continuous.port.postMessage({type:'rate',slot,rate,preservePitch}),
+      setRate:(rate,preservePitch=true,pitchSpeed)=>this.continuous.port.postMessage({type:'rate',slot,rate,preservePitch,pitchSpeed}),
       stop:()=>{this.continuous.port.postMessage({type:'remove',slot});this.continuousSlots.delete(slot);},
       disconnect:()=>{if(destination)this.continuous.disconnect(destination,slot);}
     };
@@ -79,11 +83,12 @@ export class SoundEngine {
   smooth(param,value,time,constant=.025) { param.cancelScheduledValues(time);param.setTargetAtTime(value,time,constant); }
   update(distribution) {
     if(!this.context||!this.continuous) return;
-    const now=this.context.currentTime, mapping=musicMapping(distribution);
+    const now=this.context.currentTime,read=()=>musicMapping(typeof distribution==='function'?distribution():distribution);
+    const mapping=this.sampleClock.sample(now,this.stepRate,read,this.speed);
     this.smooth(this.master.gain,!this.muted?this.volume:0,now);
     this.smooth(this.live.gain,this.running?1:0,now);
-    this.voices.forEach((voice,i)=>{if(voice){this.smooth(voice.oscillator.frequency,NOTES[i]*this.speed,now,.025/this.speed);this.smooth(voice.gain.gain,this.mode==='cluster'?mapping.weights[i]*12000/32768:0,now,.025/this.speed);}});
-    this.continuous.port.postMessage({type:'live',hz:mapping.hertz*this.speed,speed:this.speed,running:this.running,waveform:this.waveform==='original'?'sine':this.waveform});
-    this.smooth(this.averageGain.gain,this.mode==='average'&&mapping.hertz>0?10000/32768:0,now);
+    this.voices.forEach((voice,i)=>{if(voice){this.smooth(voice.oscillator.frequency,NOTES[i]*this.speed,now,.025/this.speed);this.smooth(voice.gain.gain,this.mode==='cluster'&&!isPluckedWaveform(this.waveform)?mapping.weights[i]*12000/32768:0,now,.025/this.speed);}});
+    this.continuous.port.postMessage({type:'live',hz:mapping.hertz*this.speed,speed:this.speed,running:this.running,waveform:this.waveform==='original'?'sine':this.waveform,mode:this.mode,weights:Array.from(mapping.weights).filter((_,i)=>i!==6),pitchRate:this.speed,pluckInterval:sampleInterval(this.stepRate,this.speed)});
+    this.smooth(this.averageGain.gain,(this.mode==='average'||isPluckedWaveform(this.waveform)&&this.mode==='cluster')&&mapping.hertz>0?10000/32768:0,now);
   }
 }

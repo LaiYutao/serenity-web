@@ -2,6 +2,12 @@ import { cloneState } from './stateful-dsp.js';
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const FADE_KEYS=['inTime','inCurve','outTime','outCurve'];
 export const FX_PARAMETERS={
+  drive:[
+    {key:'drive',label:'Drive',min:0,max:1,default:.35,unit:'percent'},
+    {key:'fuzz',label:'Fuzz',min:0,max:1,default:.35,unit:'percent'},
+    {key:'tone',label:'Tone',min:200,max:16000,log:true,default:5000,unit:'hz'},
+    {key:'mix',label:'Mix',min:0,max:1,default:.5,unit:'percent'}
+  ],
   filter:[
     {key:'cutoff',label:'Cutoff',min:20,max:20000,log:true,default:12000,unit:'hz'},
     {key:'resonance',label:'Reso',min:0,max:1,default:.1,unit:'percent'},
@@ -22,6 +28,7 @@ export const FX_PARAMETERS={
   ]
 };
 export function createFXState(){return {
+  drive:{enabled:false,drive:.35,fuzz:.35,tone:5000,mix:.5},
   filter:{enabled:false,cutoff:12000,resonance:.1,envMod:0,decay:.5,repeats:1},
   delay:{enabled:false,time:.35,feedback:.35,mix:.25,tone:6000,sync:0},
   fade:{enabled:false,inTime:0,inCurve:0,outTime:0,outCurve:0}
@@ -50,9 +57,15 @@ export class TrackEffectDSP{
     this.buffer=new Float32Array(Math.ceil(sampleRate*16)+2);this.cursor=0;this.z1=0;this.z2=0;this.echo=0;this.filterWet=0;this.delayWet=0;this.tick=0;this.active=false;this.toneAlpha=1-Math.exp(-2*Math.PI*6000/sampleRate);
     this.smoothing=1-Math.exp(-1/(sampleRate*.02));this.coefficients=[1,0,0,0,0];
     this.fadeWet=0;this.fadeCurrent={...this.state.fade};
+    this.driveWet=0;this.driveCurrent={...this.state.drive};
+    this.drivePrevious=0;this.driveLow1=0;this.driveLow2=0;this.driveDCInput=0;this.driveDCOutput=0;this.driveTick=0;
+    this.driveToneAlpha=1-Math.exp(-2*Math.PI*5000/(sampleRate*2));this.driveDCAlpha=Math.exp(-2*Math.PI*10/(sampleRate*2));
   }
-  setState(state){this.state={filter:{...this.state.filter,...state.filter},delay:{...this.state.delay,...state.delay},fade:{...this.state.fade,...state.fade}};}
-  reset(){this.buffer.fill(0);this.z1=0;this.z2=0;this.echo=0;}
+  setState(state){this.state={drive:{...this.state.drive,...state.drive},filter:{...this.state.filter,...state.filter},delay:{...this.state.delay,...state.delay},fade:{...this.state.fade,...state.fade}};}
+  reset(preserveDrive=false){
+    this.buffer.fill(0);this.z1=0;this.z2=0;this.echo=0;
+    if(!preserveDrive){this.drivePrevious=0;this.driveLow1=0;this.driveLow2=0;this.driveDCInput=0;this.driveDCOutput=0;}
+  }
   snapshot(){
     const length=this.buffer.length,count=Math.min(length,Math.ceil(Math.max(this.current.time,delaySeconds(this.state.delay,this.duration))*this.sampleRate)+3);
     const start=(this.cursor-count+length)%length,history=new Float32Array(count);
@@ -65,6 +78,28 @@ export class TrackEffectDSP{
   }
   next(input,time){
     const {filter,delay}=this.state,c=this.current,s=this.smoothing;
+    const drive=this.state.drive;
+    if(drive.enabled||this.driveWet>1e-6){
+      const d=this.driveCurrent;
+      for(const key of ['drive','fuzz','tone','mix'])d[key]+=(drive[key]-d[key])*s;
+      this.driveWet+=((drive.enabled?1:0)-this.driveWet)*s;
+      const gain=1+31*d.drive*d.drive,normalization=Math.tanh(gain);
+      if(this.driveTick++%16===0)this.driveToneAlpha=1-Math.exp(-2*Math.PI*Math.min(d.tone,this.sampleRate*.45)/(this.sampleRate*2));
+      let wet=0;
+      // Shape at 2× with interpolation, then low-pass before returning to the audio rate.
+      for(let step=1;step<=2;step++){
+        const x=(this.drivePrevious+(input-this.drivePrevious)*step/2)*gain;
+        const soft=Math.tanh(x)/normalization,hard=clamp(x,-1,1),shaped=soft+(hard-soft)*d.fuzz;
+        this.driveLow1+=(shaped-this.driveLow1)*this.driveToneAlpha;
+        this.driveLow2+=(this.driveLow1-this.driveLow2)*this.driveToneAlpha;
+        const dc=this.driveLow2-this.driveDCInput+this.driveDCAlpha*this.driveDCOutput;
+        this.driveDCInput=this.driveLow2;this.driveDCOutput=dc;wet+=dc/2;
+      }
+      this.drivePrevious=input;
+      input+=(wet-input)*this.driveWet*d.mix;
+    }else{
+      this.drivePrevious=input;this.driveLow1=0;this.driveLow2=0;this.driveDCInput=0;this.driveDCOutput=0;
+    }
     let fadeGain=1;
     if(this.state.fade.enabled||this.fadeWet>1e-6){
       this.fadeWet+=((this.state.fade.enabled?1:0)-this.fadeWet)*s;
@@ -72,7 +107,7 @@ export class TrackEffectDSP{
       const duration=Math.max(1/this.sampleRate,this.duration),position=(((time-this.origin)%duration)+duration)%duration/duration;
       fadeGain=1+(fadeEnvelopeAt(position,this.fadeCurrent)-1)*this.fadeWet;
     }
-    if(!filter.enabled&&!delay.enabled&&this.filterWet<1e-6&&this.delayWet<1e-6){if(this.active){this.reset();this.active=false;}return input*fadeGain;}
+    if(!filter.enabled&&!delay.enabled&&this.filterWet<1e-6&&this.delayWet<1e-6){if(this.active){this.reset(true);this.active=false;}return input*fadeGain;}
     this.active=true;
     c.cutoff+=(filter.cutoff-c.cutoff)*s;c.resonance+=(filter.resonance-c.resonance)*s;c.envMod+=(filter.envMod-c.envMod)*s;c.decay+=(filter.decay-c.decay)*s;
     c.feedback+=(delay.feedback-c.feedback)*s;c.mix+=(delay.mix-c.mix)*s;c.tone+=(delay.tone-c.tone)*s;

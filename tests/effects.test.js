@@ -8,10 +8,40 @@ const amplitude=(dsp,hz,rate)=>{
  for(let i=0;i<rate;i++){const phase=2*Math.PI*hz*i/rate,value=dsp.next(Math.sin(phase),(i+rate)/rate);if(i>rate/2){real+=value*Math.sin(phase);imag+=value*Math.cos(phase);}}
  return Math.hypot(real,imag)*4/rate;
 };
-test('all three groups default to exact passthrough and own independent per-track settings',()=>{
+test('all four groups default to exact passthrough and own independent per-track settings',()=>{
  const a=createFXState(),b=createFXState();a.filter.cutoff=100;assert.equal(b.filter.cutoff,12000);
  const dsp=new TrackEffectDSP(8000,4);
  for(let i=0;i<8000;i++){const x=Math.sin(i*.123)*.2;assert.equal(dsp.next(x,i/8000),x);}
+});
+
+test('Drive adds harmonics, Fuzz changes their character and Tone controls brightness',()=>{
+ const rate=8000;
+ const render=(values,hz=200)=>{
+  const dsp=new TrackEffectDSP(rate,1);dsp.setState({drive:{enabled:true,mix:1,tone:16000,...values}});warm(dsp,rate);
+  return Float32Array.from({length:rate},(_,i)=>dsp.next(.15*Math.sin(2*Math.PI*hz*i/rate),1+i/rate));
+ };
+ const partial=(samples,hz)=>{
+  let a=0,b=0;for(let i=0;i<samples.length;i++){const phase=2*Math.PI*hz*i/rate;a+=samples[i]*Math.cos(phase);b+=samples[i]*Math.sin(phase);}return Math.hypot(a,b)/samples.length*2;
+ };
+ const clean=render({drive:0,fuzz:0}),soft=render({drive:.6,fuzz:0}),fuzz=render({drive:.6,fuzz:1});
+ assert.ok(partial(fuzz,600)>partial(clean,600)*10);
+ assert.ok(partial(fuzz,600)>partial(soft,600)*1.1);
+ const dark=render({drive:1,fuzz:1,tone:200},1800),bright=render({drive:1,fuzz:1,tone:16000},1800);
+ assert.ok(partial(dark,1800)<partial(bright,1800)*.1);
+ for(const samples of [clean,soft,fuzz,dark,bright])assert.ok(samples.every(v=>Number.isFinite(v)&&Math.abs(v)<1.5));
+});
+
+test('Drive dry mix and bypass preserve the original audio, with smooth activation',()=>{
+ const rate=8000,dsp=new TrackEffectDSP(rate,1);
+ dsp.setState({drive:{enabled:true,drive:1,fuzz:1,mix:0}});warm(dsp,rate);
+ for(let i=0;i<1000;i++){const x=.3*Math.sin(i*.2);assert.ok(Math.abs(dsp.next(x,1+i/rate)-x)<1e-12);}
+ dsp.setState({drive:{enabled:false,mix:1}});warm(dsp,rate);
+ for(let i=0;i<1000;i++){const x=.3*Math.sin(i*.2);assert.equal(dsp.next(x,2+i/rate),x);}
+ const fade=new TrackEffectDSP(rate,1);fade.next(.2,0);fade.setState({drive:{enabled:true,drive:1,fuzz:1,mix:1}});
+ assert.ok(Math.abs(fade.next(.2,1/rate)-.2)<.01);
+ const original=createFXState();fade.setState({filter:{enabled:true,cutoff:500}});
+ assert.deepEqual(fade.state.delay,original.delay);assert.deepEqual(fade.state.fade,original.fade);
+ assert.equal(fade.state.drive.drive,1);
 });
 
 test('fade ramps preserve a full cycle, reach zero at its ends and handle overlap continuously',()=>{

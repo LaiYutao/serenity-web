@@ -124,18 +124,19 @@ dialog{border:0;border-radius:6px;background:var(--panel);color:var(--ink);max-w
 #record-mode[aria-checked=false] [data-record-choice=audio]{transform:scaleX(.86);transform-origin:left center;text-shadow:0 1px #ffffff60}
 #record-mode[aria-checked=true] [data-record-choice=field]{transform:scaleX(.86);transform-origin:right center;text-shadow:0 1px #ffffff60}
 
-/* Four hardware knobs control three independently stored effect banks. */
+/* Four hardware knobs control independently stored effect banks. */
 .controls .loop-editor{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 .controls .loop-editor .parameter .slider-label{flex-wrap:wrap;gap:3px;font-size:10px}
 .controls .loop-editor .parameter .slider-label output{font-size:9px;padding:3px 4px}
 .fx-rack{grid-column:1/-1;display:grid;gap:5px;padding-top:3px}
 .fx-toolbar{display:flex;align-items:center;justify-content:space-between;gap:5px}
 .controls .fx-toolbar .key-bank{width:auto;flex:none}
-.controls .fx-toolbar .key-bank button{min-height:25px;padding:4px 8px;font-size:10px}
-.controls .fx-toolbar #fx-power{width:27px;padding:4px}
-.fx-toolbar #fx-clock{margin-left:auto;flex:none}
+.controls .fx-toolbar .key-bank button{min-height:25px;padding:4px 5px;font-size:10px;white-space:nowrap}
+.controls .fx-toolbar #fx-power{width:25px;flex:none;padding:4px}
+.controls .fx-toolbar .fx-timing{margin-left:auto;flex:none;align-items:center}
+.fx-toolbar #fx-clock{margin:0;flex:none}
 #fx-power .icon{width:15px;height:15px}
-#fx-clock{appearance:none;-webkit-appearance:none;border:0;width:56px;height:27px;padding:4px 19px 4px 6px;font:10px var(--mono);color-scheme:dark;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23d4d4cf' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:7px 5px}
+#fx-clock{appearance:none;-webkit-appearance:none;border:0;width:44px;height:25px;padding:4px 14px 4px 4px;font:10px var(--mono);color-scheme:dark;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23d4d4cf' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 5px center;background-size:7px 5px}
 .fx-knobs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
 .fx-knob-cell{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
 .fx-knob-cell output{width:100%;padding:3px 1px;text-align:center;font:9px var(--mono)}
@@ -230,7 +231,7 @@ input[type=range]:focus:not(:focus-visible):not(.wheel-selected),.fx-knob:focus:
 .help-download a{color:var(--ink);font-weight:600;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px}
 .help-download a:focus-visible{outline:2px solid var(--ink);outline-offset:5px}
 .track-pagination .export-key{margin-right:7px}
-#export-audio .icon{width:16px;height:16px}
+.export-key .icon{width:16px;height:16px}
 #export-audio .export-stop,#export-audio[aria-pressed=true] .export-download{display:none}
 #export-audio[aria-pressed=true] .export-stop{display:block}
 #export-audio[aria-pressed=true]{color:var(--accent)}
@@ -251,3 +252,25 @@ input[type=range]:focus:not(:focus-visible):not(.wheel-selected),.fx-knob:focus:
 .console-bar .export-status{font-size:10px;line-height:1.25;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:96px}
 @media(max-width:1100px){.console-bar .export-status{max-width:65px;font-size:9px}}
 @media(max-width:1100px) and (min-width:761px){.workspace>.console-bar .transport button{padding-left:7px;padding-right:7px}}
+
+.project-save-section{border-top:1px solid #aaaDA5;margin-top:20px;padding-top:12px}
+.project-save-section h3{font-size:14px;margin:0 0 8px}
+#project-status{min-height:1.5em;color:#666960;font-size:12px;margin-bottom:0}
+
+/* Identical columns align both banks and readouts, regardless of label length. */
+.controls .speed-module .speed-heading,.controls .track-speed .speed-heading{display:grid;grid-template-columns:minmax(0,1fr) 103px 61px;gap:5px;align-items:center}
+.controls .scene-speed-modes,.controls .track-speed .tempo-modes{width:103px;height:21px;padding:2px;display:flex}
+.controls .scene-speed-modes button,.controls .track-speed .tempo-modes button{flex:1;min-width:0;height:17px;min-height:17px;padding:1px 4px;line-height:1;font-size:9px}
+.controls .speed-heading select{width:61px;min-width:0}
+
+/* Keep the rack edges and knob positions; center each readout in the gap above its knob. */
+.fx-rack{grid-template-rows:25px minmax(0,1fr);gap:0}
+.fx-toolbar{height:25px;align-items:flex-start}
+.controls .fx-toolbar .key-bank{height:25px}
+.controls .fx-toolbar .key-bank button{height:21px;min-height:21px;padding-top:2px;padding-bottom:2px}
+.fx-toolbar #fx-clock{height:21px;padding-top:2px;padding-bottom:2px}
+.fx-knob-cell{display:grid;grid-template-rows:minmax(0,1fr) auto minmax(0,1fr) 35px minmax(0,2fr) auto;justify-items:center;gap:0}
+.fx-knob-cell output{grid-row:2;margin:5.5px 0}
+.fx-knob-cell .fx-knob{grid-row:4}
+.fx-knob-cell .fx-knob-label{grid-row:6;margin-top:3px}
+@media(max-width:760px){.fx-knob-cell .fx-knob-label{margin-top:5px}}

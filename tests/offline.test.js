@@ -19,16 +19,18 @@ test('oscillator snapshots retain the exact phase, profile position, speed, pitc
 
 test('effect snapshots preserve nonempty delay history, filter integrators and parameter smoothing exactly',()=>{
   const sr=8000,fx=new TrackEffectDSP(sr,.83,0),state=createFXState();
+  state.drive={enabled:true,drive:.7,fuzz:.6,tone:4300,mix:.8};
   state.filter={...state.filter,enabled:true,cutoff:630,resonance:.51,envMod:.7,decay:.21,repeats:4};
   state.delay={...state.delay,enabled:true,time:.43,feedback:.68,mix:.6,tone:2200};
   state.fade={enabled:true,inTime:.43,outTime:.37,inCurve:.6,outCurve:-.4};fx.setState(state);
   for(let i=0;i<10000;i++)fx.next(Math.sin(i*.17)*.7,i/sr);
-  fx.setState({delay:{time:.1},filter:{cutoff:900},fade:{inTime:.21,outCurve:.7}});
+  fx.setState({drive:{drive:.9,tone:1800},delay:{time:.1},filter:{cutoff:900},fade:{inTime:.21,outCurve:.7}});
   for(let i=10000;i<10240;i++)fx.next(Math.sin(i*.17)*.7,i/sr);
   const snapshot=fx.snapshot(),copy=TrackEffectDSP.restore(snapshot);
   assert.ok(snapshot.history.length<fx.buffer.length);assert.ok(snapshot.history.some(x=>x!==0));
   for(let i=10240;i<30000;i++)assert.equal(copy.next(Math.sin(i*.17)*.7,i/sr),fx.next(Math.sin(i*.17)*.7,i/sr));
   assert.notEqual(copy.current,snapshot.current);
+  assert.notEqual(copy.driveCurrent,snapshot.driveCurrent);
 });
 
 test('compressor and volume snapshots keep gain reduction and lookahead samples, without a cold-start transient',()=>{
@@ -45,7 +47,7 @@ test('compressor and volume snapshots keep gain reduction and lookahead samples,
 test('offline rendering matches a running multi-track signal through an anchor inside a block',()=>{
   const sr=8000,fx=new TrackEffectDSP(sr,1,0),gain=new GainState(.72),master=new GainState(.51),limiter=new SnapshotCompressor(sr);
   const voice=new BufferVoice(Float32Array.from({length:731},(_,i)=>Math.sin(i*.13)*.9),.375);voice.startFrame=0;
-  const state=createFXState();state.delay.enabled=true;state.delay.time=.083;state.delay.mix=.4;state.delay.feedback=.6;
+  const state=createFXState();state.drive={enabled:true,drive:.65,fuzz:.7,tone:2300,mix:.6};state.delay.enabled=true;state.delay.time=.083;state.delay.mix=.4;state.delay.feedback=.6;
   state.fade={enabled:true,inTime:.32,outTime:.46,inCurve:.4,outCurve:-.6};fx.setState(state);
   const block=(frame)=>{
     const out=new Float32Array(128);

@@ -2,6 +2,7 @@ import { TrackEffects } from './effects.js';
 import { createFXState } from './effects-dsp.js';
 import { LiveRecording } from './recording.js';
 import { processCycle } from './cycle-dsp.js';
+import { initializeTrackTempo, trackTempo, selectedTrackSpeed } from './track-tempo.js';
 export function envelope(samples, bins=180) {
   const result=new Float32Array(bins);
   for(let i=0;i<bins;i++){
@@ -72,7 +73,24 @@ export class LoopRecorder {
       this.connectEffects(track);gain.gain.value=0;this.tracks.push(track);this.mix();track.startedAt=ctx.currentTime;track.effects.setOrigin(track.startedAt);source.start(track.startedAt,0);
     }finally{this.recording=false;this.finishing=false;this.inputRecorder=null;this.onchange();}
   }
+  restoreProjectTrack(saved){
+    const ctx=this.sound.context,buffer=ctx.createBuffer(1,saved.samples.length,ctx.sampleRate);
+    buffer.copyToChannel(saved.samples,0);
+    const source=saved.continuous?this.sound.createContinuousLoop(saved.pitchMap,saved.baseDuration,saved.waveform):this.sound.createBufferLoop(buffer);
+    const gain=this.sound.createTrackGain(),playbackGain=ctx.createGain();source.connect(playbackGain);
+    const track={...saved,id:this.nextId++,buffer,source,gain,playbackGain,
+      appliedSpeed:saved.speed,appliedMode:saved.speedMode,startedAt:ctx.currentTime-saved.position,
+      peaks:envelope(saved.samples),projectVoice:saved.voice};
+    initializeTrackTempo(track);track.appliedNormalSpeed=track.normalSpeed;track.appliedStretchSpeed=track.stretchSpeed;
+    delete track.samples;delete track.voice;delete track.position;
+    this.connectEffects(track);track.fx={...createFXState(),...saved.fx};track.effects.setState(track.fx);
+    this.tracks.push(track);
+    if(track.continuous)source.restore(saved.voice);else source.start(ctx.currentTime,saved.position);
+    return track;
+  }
   connectEffects(track){
+    initializeTrackTempo(track);
+    track.appliedNormalSpeed??=track.normalSpeed;track.appliedStretchSpeed??=track.stretchSpeed;
     track.fx=createFXState();track.effects=this.effectsFactory(this.sound.context,track.buffer.duration,track.startedAt);
     track.playbackGain.connect(track.effects.input);track.effects.output.connect(track.gain);
     if(this.sound.connectTrack)track.mixSlot=this.sound.connectTrack(track.gain);else track.gain.connect(this.sound.tracksBus??this.sound.master);
@@ -80,42 +98,46 @@ export class LoopRecorder {
   setEffects(track,group,values){Object.assign(track.fx[group],values);track.effects.setState(track.fx);}
   resetEffects(track){track.fx=createFXState();track.effects.setState(track.fx);track.effects.reset();}
   setSpeed(track,value){
-    track.speed=Math.round(Math.max(.25,Math.min(4,Number(value)||1))*100)/100;
+    initializeTrackTempo(track);
+    const next=Math.round(Math.max(.25,Math.min(4,Number(value)||1))*100)/100;
+    if(next===selectedTrackSpeed(track))return;
+    track[track.speedMode==='normal'?'normalSpeed':'stretchSpeed']=next;
+    track.speed=track.normalSpeed*track.stretchSpeed;
     this.edit(track,{});
   }
-  setSpeedMode(track,mode){track.speedMode=mode==='normal'?'normal':'stretch';this.edit(track,{});}
+  setSpeedMode(track,mode){initializeTrackTempo(track);track.speedMode=mode==='normal'?'normal':'stretch';this.onchange();}
   edit(track,settings){
     Object.assign(track.settings,settings);
     if(track.continuous)track.source.edit({...track.settings});
     this.onchange();
     const revision=track.editRevision=(track.editRevision||0)+1;
     track.worker?.terminate();track.worker=null;
-    const {lowPitch,highPitch}=track.settings,speed=track.speed??1,speedMode=track.speedMode??'stretch',key=`${lowPitch}:${highPitch}@${speed}:${speedMode}`;
+    const {lowPitch,highPitch}=track.settings,{normal,stretch,rate:speed}=trackTempo(track),key=`${lowPitch}:${highPitch}@${normal}:${stretch}`;
     const apply=samples=>{
       if(track.editRevision!==revision||!this.tracks.includes(track))return;
       track.pitchSamples=samples;track.pitchKey=key;
-      this.swap(track,processCycle(samples,{start:track.settings.start,end:track.settings.end}),speed,speedMode);
+      this.swap(track,processCycle(samples,{start:track.settings.start,end:track.settings.end}),speed,normal);
     };
     if(key===track.pitchKey){apply(track.pitchSamples);return;}
-    if(lowPitch===0&&highPitch===127&&speed===1){apply(track.original);return;}
+    if(lowPitch===0&&highPitch===127&&speed===1&&normal===1){apply(track.original);return;}
     const worker=track.worker=new Worker(new URL('./tempo-worker.js',import.meta.url),{type:'module'});
     worker.onmessage=({data})=>{worker.terminate();if(track.worker===worker)track.worker=null;if(data.error)this.onerror?.('recordUnavailable');else apply(data.samples);};
     worker.onerror=()=>{worker.terminate();if(track.worker===worker)track.worker=null;this.onerror?.('recordUnavailable');};
-    worker.postMessage({samples:track.waveform==='recording'?track.original:undefined,pitchMap:track.pitchMap,duration:track.baseDuration??track.original.length/this.sound.context.sampleRate,speed,speedMode,waveform:track.waveform,sampleRate:this.sound.context.sampleRate,lowPitch,highPitch});
+    worker.postMessage({samples:track.waveform==='recording'?track.original:undefined,pitchMap:track.pitchMap,duration:track.baseDuration??track.original.length/this.sound.context.sampleRate,normalSpeed:normal,stretchSpeed:stretch,waveform:track.waveform,sampleRate:this.sound.context.sampleRate,lowPitch,highPitch});
   }
-  swap(track,samples,speed=track.appliedSpeed??1,speedMode=track.appliedMode??'stretch'){
+  swap(track,samples,speed=track.appliedSpeed??1,normal=track.appliedNormalSpeed??(track.appliedMode==='normal'?track.appliedSpeed??1:1)){
     const ctx=this.sound.context;
     const buffer=ctx.createBuffer(1,samples.length,ctx.sampleRate);buffer.copyToChannel(samples,0);
     if(track.continuous){
       const now=ctx.currentTime,position=((now-track.startedAt)%track.buffer.duration+track.buffer.duration)%track.buffer.duration/track.buffer.duration;
-      track.startedAt=now-position*buffer.duration;track.source.setRate((track.baseDuration??track.original.length/ctx.sampleRate)/buffer.duration,speedMode!=='normal');track.appliedSpeed=speed;track.appliedMode=speedMode;
+      track.startedAt=now-position*buffer.duration;track.source.setRate((track.baseDuration??track.original.length/ctx.sampleRate)/buffer.duration,true,normal);track.appliedSpeed=speed;track.appliedNormalSpeed=normal;track.appliedStretchSpeed=speed/normal;
       track.buffer=buffer;track.effects.setDuration?.(buffer.duration);track.effects.setOrigin(track.startedAt);track.peaks=envelope(samples);this.onchange();return;
     }
     const next=this.sound.createBufferLoop?.(buffer)??ctx.createBufferSource(),fade=ctx.createGain();next.buffer=buffer;next.loop=true;next.connect(fade).connect(track.effects.input);
     const when=ctx.currentTime+.01,position=((when-track.startedAt)%track.buffer.duration+track.buffer.duration)%track.buffer.duration/track.buffer.duration,offset=position*buffer.duration;
     fade.gain.setValueAtTime(0,when);fade.gain.linearRampToValueAtTime(1,when+.01);next.start(when,offset);
     const previous=track.source,previousGain=track.playbackGain;previousGain.gain.cancelScheduledValues(when);previousGain.gain.setValueAtTime(previousGain.gain.value,when);previousGain.gain.linearRampToValueAtTime(0,when+.01);previous.stop(when+.012);previous.onended=()=>{previous.disconnect();previousGain.disconnect();};
-    track.startedAt=when-offset;track.appliedSpeed=speed;track.appliedMode=speedMode;track.effects.setDuration?.(buffer.duration);track.effects.setOrigin(track.startedAt);track.source=next;track.playbackGain=fade;track.buffer=buffer;track.peaks=envelope(samples);this.onchange();
+    track.startedAt=when-offset;track.appliedSpeed=speed;track.appliedNormalSpeed=normal;track.appliedStretchSpeed=speed/normal;track.effects.setDuration?.(buffer.duration);track.effects.setOrigin(track.startedAt);track.source=next;track.playbackGain=fade;track.buffer=buffer;track.peaks=envelope(samples);this.onchange();
   }
   mix(){const now=this.sound.context.currentTime;for(const track of this.tracks){track.gain.gain.cancelScheduledValues(now);track.gain.gain.setTargetAtTime(loopGain(track,this.tracks),now,.015);}}
   remove(id){const index=this.tracks.findIndex(track=>track.id===id);if(index<0)return;const [track]=this.tracks.splice(index,1);track.worker?.terminate();track.source.stop();track.source.disconnect();track.playbackGain.disconnect();track.effects.destroy();if(track.gain.destroy)track.gain.destroy();else track.gain.disconnect();this.sound.releaseTrack?.(track.mixSlot);this.mix();this.onchange();}

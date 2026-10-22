@@ -167,3 +167,16 @@ export class Simulation {
   }
   step(dt=STEP) { this.time+=dt;this.heights.fill(0);for(const field of this.fields) field.accumulate(this.time,this.heights);this.distribution.fill(0);for(let i=0;i<this.heights.length;i++){const bin=heightBin(this.heights[i]);this.bins[i]=bin;this.distribution[bin]++;} }
 }
+
+// Read intermediate field phases without changing propagation or the visible grid.
+export function sampleDistribution(sim,regions=[],offset=0){
+  if(!offset)return sim.distributionFor(regions);
+  const distribution=new Uint32Array(13),time=sim.time+offset;
+  for(let i=0;i<sim.heights.length;i++){
+    const x=i%sim.width,y=Math.floor(i/sim.width);
+    if(regions.length&&!regions.some(r=>x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom))continue;
+    let height=0;for(const f of sim.fields)height+=f.amps[i]*Math.cos(TAU*f.direction*f.freqs[i]*time+f.phases[i]);
+    distribution[heightBin(height)]++;
+  }
+  return distribution;
+}

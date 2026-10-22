@@ -1,3 +1,6 @@
+import { isPluckedWaveform } from './pluck-dsp.js';
+import { heldTime } from './sampling.js';
+import { ContinuousTone, ContinuousCluster } from './continuous-dsp.js';
 import { FieldEvolution } from './field-evolution.js';
 import { heightBin, musicMapping, NOTES } from './simulation.js';
 const TAU=2*Math.PI;
@@ -17,12 +20,13 @@ export function snapshotField(sim,regions,speed=1){
 }
 export function renderCycle(snapshot,mode,waveform,sampleRate,options={}){
   const duration=options.duration??fieldPeriod(snapshot.fields.map(f=>mode==='average'&&f.active?{amps:[f.targetAmplitude],freqs:[f.targetFrequency]}:f))/(snapshot.speed??1),length=Math.round(duration*sampleRate),frames=options.pitchMap?.frames??Math.max(20,Math.ceil(duration*20));
-  const pitchRate=options.pitchMap?.pitchRate??snapshot?.speed??1;
+  const pitchRate=options.pitchMap?.pitchRate??snapshot?.speed??1,sampleInterval=options.pitchMap?(options.pitchMap.sampleInterval??0)*duration/(options.pitchMap.sampleDuration??duration):snapshot?.sampleInterval??0;
+  const pluckInterval=options.pitchMap?(options.pitchMap.pluckInterval??(options.pitchMap.sampleInterval||.1/pitchRate))*duration/(options.pitchMap.sampleDuration??duration):sampleInterval||.1/(snapshot?.speed??1);
   const mappings=[],evolution=snapshot?new FieldEvolution(mode==='average'?snapshot:{...snapshot,fields:snapshot.fields.map(({amps,freqs,phases,direction})=>({amps,freqs,phases,direction}))}):null;
   const continuation=options.pitchMap?.continuation??(mode==='average'&&evolution?evolution.continuation(duration):null);
   if(options.pitchMap){
     for(let f=0;f<frames;f++){const weights=options.pitchMap.weights[f].slice();weights.splice(6,0,0);mappings.push({weights,hertz:options.pitchMap.frequencies[f]});}
-  }else for(let frame=0;frame<frames;frame++)mappings.push(evolution.mappingAt(frame*duration/frames));
+  }else for(let frame=0;frame<frames;frame++)mappings.push(evolution.mappingAt(heldTime(frame*duration/frames,sampleInterval)));
   const lowHz=options.lowHz??0,highHz=options.highHz??Infinity;
   const table=new Float32Array(8192),type=waveform==='original'&&mode==='average'?'sine':waveform;
   for(let i=0;i<table.length;i++){
@@ -35,13 +39,14 @@ export function renderCycle(snapshot,mode,waveform,sampleRate,options={}){
   }
   const samples=new Float32Array(length);
   const value=phase=>{const p=((phase%1)+1)%1*table.length,index=Math.floor(p);return table[index]*(1-(p-index))+table[(index+1)%table.length]*(p-index);};
-  const phases=mode==='average'?new Float64Array(length+1):null;
-  if(phases)for(let n=0;n<length;n++){
+  const specialized=isPluckedWaveform(waveform)||sampleInterval>0;
+  const phases=mode==='average'&&!specialized?new Float64Array(length+1):null;
+  if(phases)for(let n=0;!specialized&&n<length;n++){
     const position=n/length*frames,index=Math.floor(position),fraction=position-index;
     phases[n+1]=phases[n]+(mappings[index].hertz*(1-fraction)+mappings[(index+1)%frames].hertz*fraction)*pitchRate/sampleRate;
   }
   // Microtone playback keeps accumulating phase across field periods; no pitch retuning.
-  for(let n=0;n<length;n++){
+  for(let n=0;!specialized&&n<length;n++){
     const position=n/length*frames,index=Math.floor(position),fraction=position-index,a=mappings[index],b=mappings[(index+1)%frames];
     if(mode==='average'){
       const hz=(a.hertz*(1-fraction)+b.hertz*fraction)*pitchRate;
@@ -56,7 +61,13 @@ export function renderCycle(snapshot,mode,waveform,sampleRate,options={}){
       samples[n]=sum*12000/32768;
     }
   }
-  return {samples,duration,pitchMap:{mode,frames,pitchRate,continuation,weights:mappings.map(m=>Array.from(m.weights).filter((_,i)=>i!==6)),frequencies:mappings.map(m=>m.hertz)},pitchCorrection:mode==='average'?0:Math.max(...NOTES.filter(Boolean).map(hz=>Math.abs(Math.round(hz*pitchRate*duration)/duration-hz*pitchRate)))};
+  if(isPluckedWaveform(waveform)||sampleInterval){
+    const voice=mode==='average'?new ContinuousTone():new ContinuousCluster();voice.waveform=waveform;
+    voice.settings={start:0,end:0,lowPitch:options.lowPitch??0,highPitch:options.highPitch??127};
+    voice.install({...continuation,mode,frequencies:Float64Array.from(continuation?.frequencies??mappings.map(m=>m.hertz),hz=>hz*pitchRate),weights:mappings.map(m=>Array.from(m.weights).filter((_,i)=>i!==6)),pitchRate,duration,offset:0,sampleInterval,pluckInterval});
+    for(let n=0;n<length;n++)samples[n]=voice.next(sampleRate)*(mode==='average'?10000:12000)/32768;
+  }
+  return {samples,duration,pitchMap:{mode,frames,pitchRate,sampleInterval,pluckInterval,sampleDuration:duration,continuation,weights:mappings.map(m=>Array.from(m.weights).filter((_,i)=>i!==6)),frequencies:mappings.map(m=>m.hertz)},pitchCorrection:mode==='average'?0:Math.max(...NOTES.filter(Boolean).map(hz=>Math.abs(Math.round(hz*pitchRate*duration)/duration-hz*pitchRate)))};
 }
 export function processCycle(original,settings={}){
   const {start=0,end=0,low=-1,high=1}=settings,result=original.slice(),size=result.length;

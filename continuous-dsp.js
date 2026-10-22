@@ -1,7 +1,9 @@
+import { heldTime } from './sampling.js';
+import { pluckState, pluckNext, isPluckedWaveform } from './pluck-dsp.js';
 const TAU=2*Math.PI;
 const wrap=(value,period)=>((value%period)+period)%period;
 export function profileFrequency(profile,elapsed){
-  const frequencies=profile.frequencies,offset=profile.lookupOffset??0,t=Math.max(0,elapsed+offset);
+  const frequencies=profile.frequencies,offset=profile.lookupOffset??0,t=Math.max(0,heldTime(elapsed,profile.sampleInterval??0)+offset);
   const intro=profile.introFrames??0;
   let x,i,next;
   if(intro&&t<profile.introDuration){
@@ -40,8 +42,10 @@ export class ContinuousTone{
       const distance=Math.min(wrap(start-position,1),wrap(position-end,1))*this.profile.duration/this.rate;
       gain*=Math.min(1,distance/.003);
     }
-    const value=gain===0?0:toneWave(this.phase,this.waveform)*gain;
-    if(advance){this.phase=wrap(this.phase+hz/sampleRate,1);if(this.profile){this.profile.elapsed+=this.rate/sampleRate;this.profile.position=wrap(this.profile.position+this.rate/sampleRate,this.profile.duration);}}
+    const pluckInterval=this.profile?.pluckInterval??(this.profile?.sampleInterval||this.pluckInterval||.1/(this.profile?.pitchRate??this.speed));
+    const pluckTick=Math.floor(((this.profile?.elapsed??this.pluckElapsed??0)+1e-9)/pluckInterval);
+    const value=isPluckedWaveform(this.waveform)?pluckNext(this.pluck??=pluckState(),this.phase,hz,gain,sampleRate,advance,pluckTick,pluckInterval/(this.rate??1),this.waveform)*(gain===0?0:1):gain===0?0:toneWave(this.phase,this.waveform)*gain;
+    if(advance){this.pluckElapsed=(this.pluckElapsed??0)+1/sampleRate;this.phase=wrap(this.phase+hz/sampleRate,1);if(this.profile){this.profile.elapsed+=this.rate/sampleRate;this.profile.position=wrap(this.profile.position+this.rate/sampleRate,this.profile.duration);}}
     return value;
   }
 }
@@ -52,21 +56,42 @@ export class ContinuousCluster{
   constructor(){this.phases=new Float64Array(12);this.rate=1;this.waveform='original';this.settings={start:0,end:0,lowPitch:0,highPitch:127};}
   install(profile){this.profile={...profile,elapsed:profile.offset,position:wrap(profile.offset,profile.duration)};}
   next(sampleRate){
-    const p=this.profile,position=p.position/p.duration,x=position*p.weights.length,index=Math.floor(x),fraction=x-index;
-    const a=p.weights[index],b=p.weights[(index+1)%p.weights.length],{start,end,lowPitch,highPitch}=this.settings;
+    const p=this.profile,position=p.position/p.duration,x=heldTime(p.position,p.sampleInterval??0)/p.duration*p.weights.length,index=Math.floor(x),fraction=p.sampleInterval?0:x-index;
+    const a=p.weights[Math.min(index,p.weights.length-1)],b=p.weights[(index+1)%p.weights.length],{start,end,lowPitch,highPitch}=this.settings;
     const masked=start<end?position>=start&&position<end:start>end&&(position>=start||position<end);
     let sum=0;
     for(let i=0;i<12;i++){
       const pitchRate=(p.pitchRate??1)*(this.pitchSpeed??1),hz=CLUSTER_HZ[i]*pitchRate,note=60+i+12*Math.log2(pitchRate),phase=this.phases[i];
-      if(!masked&&note>=lowPitch&&note<=highPitch){
+      const allowed=!masked&&note>=lowPitch&&note<=highPitch;
+      if(isPluckedWaveform(this.waveform)){
+        this.plucks??=Array.from({length:12},pluckState);
+        const interval=p.pluckInterval??(p.sampleInterval||.1/(p.pitchRate??1)),tick=Math.floor((p.elapsed+1e-9)/interval);
+        const value=pluckNext(this.plucks[i],phase,hz,allowed?a[i]*(1-fraction)+b[i]*fraction:0,sampleRate,true,tick,interval/(this.rate??1),this.waveform);if(allowed)sum+=value;
+      }else if(allowed){
         let value=toneWave(phase,this.waveform);
         if(this.waveform==='original')value+=.1*Math.sin(TAU*phase*2)+.056*Math.sin(TAU*phase*3)+.042*Math.sin(TAU*phase*4)+.037*Math.sin(TAU*phase*5);
-        sum+=value*(a[i]*(1-fraction)+b[i]*fraction);
+        const weight=a[i]*(1-fraction)+b[i]*fraction;
+        sum+=value*weight;
       }
       this.phases[i]=wrap(phase+hz/sampleRate,1);
     }
     if(start!==end&&!masked){const distance=Math.min(wrap(start-position,1),wrap(position-end,1))*p.duration/this.rate;sum*=Math.min(1,distance/.003);}
     p.elapsed+=this.rate/sampleRate;p.position=wrap(p.position+this.rate/sampleRate,p.duration);
     return sum;
+  }
+}
+
+// Live cluster uses the very same string model as stored/offline voices.
+export class LivePluckCluster{
+  constructor(){this.phases=new Float64Array(12);this.plucks=Array.from({length:12},pluckState);this.weights=new Float64Array(12);this.pitchRate=1;this.elapsed=0;}
+  next(sampleRate,running=true){
+    let sum=0;const interval=this.pluckInterval??.1/this.pitchRate;
+    for(let i=0;i<12;i++){
+      const hz=CLUSTER_HZ[i]*this.pitchRate;
+      sum+=pluckNext(this.plucks[i],this.phases[i],hz,this.weights[i],sampleRate,running,Math.floor((this.elapsed+1e-9)/interval),interval,this.waveform);
+      if(running)this.phases[i]=wrap(this.phases[i]+hz/sampleRate,1);
+    }
+    if(running)this.elapsed+=1/sampleRate;
+    return sum*12000/32768;
   }
 }

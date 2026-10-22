@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { stretchRecording, resampleRecording } from '../tempo-dsp.js';
 import { ContinuousTone, ContinuousCluster, profileFrequency } from '../continuous-dsp.js';
 import { LoopRecorder } from '../loops.js';
+import { trackTempo, selectedTrackSpeed } from '../track-tempo.js';
+import { renderTrackTempo } from '../track-tempo-dsp.js';
 
 const wrap=(x,p)=>((x%p)+p)%p;
 function dominant(samples,sampleRate,centre){
@@ -67,4 +69,47 @@ test('Normal doubles pitch as well as tempo, while Stretch keeps the same pitch 
  assert.equal(micro.frequency,880);assert.ok(Math.abs(micro.phase-880/sr)<1e-12);
  const cluster=new ContinuousCluster();cluster.install({duration:2,offset:0,pitchRate:1,weights:[Array.from({length:12},(_,i)=>i===9?1:0)]});cluster.rate=2;cluster.pitchSpeed=2;
  assert.equal(dominant(Float32Array.from({length:sr},()=>cluster.next(sr)),sr,880),880);
+});
+
+test('Normal/Stretch buttons only choose an editor, preserving the voice, worker and playhead',()=>{
+ const recorder=new LoopRecorder({}),voice=new ContinuousTone();voice.install({duration:2,offset:.37,frequencies:[440]},.21);
+ const reference=Object.assign(new ContinuousTone(),structuredClone(voice));
+ const worker={terminate(){assert.fail('switching editors cancelled processing');}};
+ const track={speed:2,speedMode:'normal',source:voice,startedAt:3,worker};
+ recorder.edit=()=>assert.fail('switching editors reprocessed audio');
+ for(let i=0;i<20;i++){
+  recorder.setSpeedMode(track,i%2?'normal':'stretch');
+  assert.deepEqual(trackTempo(track),{normal:2,stretch:1,rate:2,pitchSpeed:2});
+  assert.equal(selectedTrackSpeed(track),i%2?2:1);
+  assert.equal(track.worker,worker);assert.equal(track.startedAt,3);
+  for(let j=0;j<128;j++)assert.equal(voice.next(8000),reference.next(8000));
+ }
+});
+
+test('each track remembers two independent rates and composes them regardless of the selected editor',()=>{
+ const recorder=new LoopRecorder({}),track={speed:1,speedMode:'stretch'};let edits=0;
+ recorder.edit=()=>edits++;
+ recorder.setSpeed(track,.5);recorder.setSpeedMode(track,'normal');recorder.setSpeed(track,2);
+ assert.deepEqual(trackTempo(track),{normal:2,stretch:.5,rate:1,pitchSpeed:2});
+ recorder.setSpeedMode(track,'stretch');assert.equal(selectedTrackSpeed(track),.5);
+ recorder.setSpeed(track,.5);assert.equal(edits,2);
+ recorder.setSpeed(track,.25);recorder.setSpeedMode(track,'normal');recorder.setSpeed(track,.25);
+ assert.equal(trackTempo(track).rate,.0625);
+ const other={speed:1,speedMode:'normal'};assert.equal(selectedTrackSpeed(other),1);
+});
+
+test('combined Normal and Stretch render the same tempo with independently shifted pitch',()=>{
+ const sr=8000,input=Float32Array.from({length:sr},(_,i)=>.5*Math.sin(2*Math.PI*440*i/sr));
+ const base={samples:input,duration:1,sampleRate:sr,lowPitch:0,highPitch:127};
+ const weights=[Array.from({length:12},(_,i)=>i===9?1:0)],map={frames:1,pitchRate:1,frequencies:[440],weights};
+ for(const [normal,stretch,hz] of [[2,.5,880],[.5,2,220]])for(const mode of ['recording','average','cluster']){
+  const data={...base,waveform:mode==='recording'?'recording':'sine',pitchMap:{...map,mode},normalSpeed:normal,stretchSpeed:stretch};
+  const a=renderTrackTempo({...data,speedMode:'normal'}),b=renderTrackTempo({...data,speedMode:'stretch'});
+  assert.equal(a.length,sr);assert.deepEqual(a,b);
+  assert.ok(Math.abs(dominant(a,sr,hz)-hz)<=1,`${mode} ${normal} × ${stretch}`);
+ }
+ for(const rate of [.25,4]){
+  const out=renderTrackTempo({...base,waveform:'recording',normalSpeed:rate,stretchSpeed:rate});
+  assert.equal(out.length,Math.round(sr/(rate*rate)));assert.ok(out.every(Number.isFinite));
+ }
 });

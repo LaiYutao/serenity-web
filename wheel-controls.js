@@ -70,7 +70,7 @@ export function installWheelControls(knobControls){
     const steps=Math.trunc((remainder+Math.sign(remainder)*1e-9)/step);
     if(!steps)return;
     remainder-=steps*step;
-    selected.value=String(wheelRangeValue(Number(selected.value),steps*step,min,max,selected.id==='speed-range'));
+    selected.value=String(wheelRangeValue(Number(selected.value),steps*step,min,max,selected.id==='speed-range'&&min<0));
     selected.dispatchEvent(new Event('input',{bubbles:true}));
   },{passive:false});
 }
