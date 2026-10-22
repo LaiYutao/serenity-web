@@ -6,7 +6,8 @@ import { LoopRecorder, formatTime, loopGain, paginateTracks } from './loops.js';
 import { selectedTrackSpeed } from './track-tempo.js';
 import { snapshotField, maskFromDrag } from './cycle-dsp.js';
 import { translate, readLanguage } from './i18n.js';
-import { MixCapture, encodeWav, planCycleExport, loadExportModule } from './recording-export.js';
+import { MixCapture, TrackCapture, encodeWav, planCycleExport, loadExportModule } from './recording-export.js';
+import { softenLoopEdges } from './recording.js';
 import { snapshotCycle, startOfflineRender } from './recording-offline.js';
 import { installWheelControls } from './wheel-controls.js';
 import { captureFieldScene, restoreFieldScene, fieldRecallElapsed } from './field-recall.js';
@@ -369,6 +370,29 @@ function drawWaveform(){
 }
 $('#waveform').onchange=event=>{sound.setWaveform(event.target.value);drawWaveform();};
 let recordBusy=false,recallingField=false,trackDrawTime=0,editTrackId=null,trackPage=0,visibleTracks=[],recordMode='field';
+let trackCapture=null;
+async function toggleTrackRecording(track){
+  if(trackCapture){
+    if(trackCapture.track===track&&trackCapture.ready){
+      trackCapture.ready=false;void trackCapture.capture.stop();renderTracks();
+    }
+    return;
+  }
+  if(recordBusy||recorder.recording||cycleLocked||projectBusy||recallingField||!recorder.tracks.includes(track))return;
+  if(recorder.tracks.length>=16){notify('recordLimit');return;}
+  const session=trackCapture={track,capture:new TrackCapture(sound,track),ready:false};
+  recorder.recording=true;editTrackId=track.id;notify('');renderTracks();
+  try{
+    await session.capture.start();session.ready=true;renderTracks();
+    const {samples,sampleRate}=await session.capture.done;
+    session.ready=false;recorder.finishing=true;renderTracks();
+    const created=await recorder.addRecording(softenLoopEdges(samples,sampleRate));
+    trackPage=Math.floor((recorder.tracks.length-1)/3);editTrackId=created.id;
+  }catch(error){notify(['recordLimit','recordEmpty'].includes(error.message)?error.message:'recordUnavailable');}
+  finally{
+    session.capture.cleanup();trackCapture=null;recorder.recording=false;recorder.finishing=false;renderTracks();
+  }
+}
 async function recallTrackField(track){
   if(!track.fieldScene||cycleLocked||recallingField||recordBusy||recorder.recording||track.worker)return;
   recallingField=true;document.querySelectorAll('.recall-field').forEach(button=>button.disabled=true);
@@ -388,7 +412,7 @@ async function recallTrackField(track){
 }
 $('#record-mode').onclick=event=>{recordMode=event.target.closest('[data-record-choice]')?.dataset.recordChoice??(recordMode==='field'?'audio':'field');syncRecord();};
 $('#record').onclick=async()=>{
-  if(recordBusy)return;
+  if(recordBusy||trackCapture)return;
   recordBusy=true;$('#record').disabled=true;notify('');
   try{
     if(recorder.directRecording){
@@ -409,16 +433,27 @@ $('#record').onclick=async()=>{
   finally{recordBusy=false;$('#record').disabled=false;syncRecord();}
 };
 function syncRecord(){
-  $('#record').disabled=recordBusy||cycleLocked;
-  $('#record').classList.toggle('recording',recorder.recording);
-  $('#record').setAttribute('aria-pressed',recorder.recording);
+  $('#record').disabled=recordBusy||cycleLocked||!!trackCapture;
+  $('#record').classList.toggle('recording',recorder.recording&&!trackCapture);
+  $('#record').setAttribute('aria-pressed',recorder.recording&&!trackCapture);
   $('#record-mode').disabled=recordBusy||recorder.recording||cycleLocked;
   $('#record-mode').setAttribute('aria-checked',recordMode==='audio');
   $('#record-mode').title=t('recordMode')+' · '+t(recordMode==='audio'?'directRecord':'fieldLayer');
   $('.record-rocker').dataset.mode=recordMode;
   $('#record [data-i18n]').textContent=t(recorder.directRecording?'stopRecord':'record');
   $('#record').title=t(recorder.directRecording?'stopRecord':'record')+' (O)';
-  $('#record-status').textContent=recorder.directRecording?t('recording',{time:formatTime(Math.max(0,sound.context.currentTime-recorder.inputRecorder.startedAt))}):recorder.recording?t('processing'):t('trackCount',{count:recorder.tracks.length})+(recorder.tracks.length>3?` · ${trackPage+1}/${Math.ceil(recorder.tracks.length/3)}`:'');
+  const startedAt=trackCapture?.ready?trackCapture.capture.startedAt:recorder.directRecording?recorder.inputRecorder.startedAt:null;
+  $('#record-status').textContent=startedAt!==null?t('recording',{time:formatTime(Math.max(0,sound.context.currentTime-startedAt))}):recorder.recording?t('processing'):t('trackCount',{count:recorder.tracks.length})+(recorder.tracks.length>3?` · ${trackPage+1}/${Math.ceil(recorder.tracks.length/3)}`:'');
+  syncTrackRecordButtons();
+}
+function syncTrackRecordButtons(){
+  document.querySelectorAll('.record-track').forEach(button=>{
+    const owner=trackCapture&&String(trackCapture.track.id)===button.closest('.loop-row').dataset.track;
+    button.setAttribute('aria-pressed',!!owner);button.setAttribute('aria-busy',!!owner&&!trackCapture.ready);
+    button.disabled=cycleLocked||recordBusy||recallingField||projectBusy||(trackCapture?(!owner||!trackCapture.ready):recorder.recording||recorder.tracks.length>=16);
+    const number=recorder.tracks.findIndex(track=>String(track.id)===button.closest('.loop-row').dataset.track)+1;
+    button.setAttribute('aria-label',t(owner?'stopTrackRecording':'recordTrack',{number}));
+  });
 }
 function controlButton(label,text,action){
   const button=document.createElement('button');button.type='button';button.textContent=text;button.setAttribute('aria-label',label);button.title=label;button.onclick=action;return button;
@@ -437,6 +472,8 @@ function renderTracks(){
     const repeat=document.createElement('img');repeat.src='assets/icons/repeat.svg';repeat.className='icon';repeat.alt='';
     display.append(number,wave,time,repeat);track.display=display;track.canvas=wave;
     row.append(display);
+    const record=document.createElement('button');record.type='button';record.className='record-track';
+    record.onclick=()=>void toggleTrackRecording(track);row.append(record);
     if(track.fieldScene){
       row.classList.add('has-field-recall');
       const recall=document.createElement('button');recall.type='button';recall.className='recall-field';
@@ -496,6 +533,7 @@ function syncExportDialog(){
 function lockCycleExport(locked){
   cycleLocked=locked;$('.loop-editor').inert=locked;syncRecord();
   document.querySelectorAll('.recall-field').forEach(button=>button.disabled=locked||recallingField||!!recorder.tracks.find(track=>String(track.id)===button.closest('.loop-row').dataset.track)?.worker);
+  syncTrackRecordButtons();
 }
 function downloadWav(samples,sampleRate,mode=exportMode){
   const blob=new Blob([encodeWav(samples,sampleRate)],{type:'audio/wav'}),url=URL.createObjectURL(blob),link=document.createElement('a');
@@ -630,6 +668,7 @@ function syncEditor(){
   $('#loop-editor').hidden=false;
   $('#loop-editor').querySelectorAll('button,input,select').forEach(element=>element.disabled=!track);
   document.querySelectorAll('[data-fx-page]').forEach(button=>button.disabled=false);syncEffects();
+  $('#delete-selected').disabled=!track||trackCapture?.track===track;
   document.querySelectorAll('[data-tempo-mode]').forEach(button=>{button.setAttribute('aria-pressed',(track?.speedMode??'stretch')===button.dataset.tempoMode);button.title=t(button.dataset.tempoMode==='normal'?'normalTempo':'stretchTempo');});
   if(!track){
     $('#edit-track').textContent='— / —';$('#edit-volume-value').textContent='—';

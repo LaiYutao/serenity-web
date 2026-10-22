@@ -274,3 +274,11 @@ input[type=range]:focus:not(:focus-visible):not(.wheel-selected),.fx-knob:focus:
 .fx-knob-cell .fx-knob{grid-row:4}
 .fx-knob-cell .fx-knob-label{grid-row:6;margin-top:3px}
 @media(max-width:760px){.fx-knob-cell .fx-knob-label{margin-top:5px}}
+
+/* Record in the existing gap after the track number; waveform and row bounds stay put. */
+.record-track{position:absolute;left:22px;top:0;width:15px;height:28px;padding:0;background:transparent;border-radius:2px;display:grid;place-items:center}
+.record-track::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);opacity:.75}
+.record-track:hover:not(:disabled)::before{opacity:1}
+.record-track[aria-pressed=true]::before{border-radius:0;opacity:1;animation:record-pulse 1s steps(2,end) infinite}
+.record-track:disabled::before{opacity:.25}
+.record-track[aria-pressed=true]:disabled::before{opacity:.7;animation:none}

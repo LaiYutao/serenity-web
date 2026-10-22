@@ -124,6 +124,8 @@ export const messages = {
   recordUnavailable: ['录入失败，请重试。', 'Recording failed. Please try again.'],
   recordEmpty: ['录音太短，请至少录入半秒。', 'Recording too short. Record at least half a second.'],
   recordLimit: ['最多保留 16 条音轨。', 'Up to 16 loops can be kept.'],
+  recordTrack: ['录制音轨 {number} 及其操作', 'Record track {number} and its edits'],
+  stopTrackRecording: ['停止录制音轨 {number}，生成新音轨', 'Stop recording track {number} and create a new loop'],
   regionCompact: ['{count} 个选区', '{count} regions'],
   regionAllCompact: ['全局', 'Full canvas'],
   regionEditing: ['框选中', 'Selecting'],

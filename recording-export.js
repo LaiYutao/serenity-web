@@ -81,3 +81,28 @@ export class MixCapture{
     this.active=false;this.input.disconnect(this.node);this.node.disconnect();this.silent.disconnect();this.node.port.close();
   }
 }
+
+// Resample one track after its effects, with its own volume/mute, before the mix.
+// Other tracks' Solo settings and the master/live buses cannot enter this branch.
+export class TrackCapture extends MixCapture{
+  constructor(sound,track){super(sound);this.track=track;}
+  async start(){
+    await this.sound.start();
+    const ctx=this.sound.context;this.tap=ctx.createGain();this.track.recordCapture=this;
+    this.syncGain(ctx.currentTime,true);this.track.effects.output.connect(this.tap);
+    try{await super.start({input:this.tap});}
+    catch(error){this.release();throw error;}
+  }
+  syncGain(now=this.sound.context.currentTime,immediate=false){
+    if(!this.tap)return;
+    const value=this.track.muted?0:this.track.volume;
+    this.tap.gain.cancelScheduledValues(now);
+    if(immediate)this.tap.gain.value=value;else this.tap.gain.setTargetAtTime(value,now,.015);
+  }
+  release(){
+    if(!this.tap)return;
+    this.track.effects.output.disconnect(this.tap);this.tap.disconnect();this.tap=null;
+    if(this.track.recordCapture===this)delete this.track.recordCapture;
+  }
+  cleanup(){super.cleanup();this.release();}
+}
