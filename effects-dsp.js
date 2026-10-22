@@ -73,10 +73,17 @@ export class TrackEffectDSP{
     const {buffer,...state}=this;return {...state,bufferLength:length,historyStart:start,history};
   }
   static restore(state){
-    const {bufferLength,historyStart,history,...values}=cloneState(state),dsp=Object.assign(Object.create(TrackEffectDSP.prototype),values);
+    const {right,...channel}=state;
+    const {bufferLength,historyStart,history,...values}=cloneState(channel),dsp=Object.assign(Object.create(TrackEffectDSP.prototype),values);
     dsp.buffer=new Float32Array(bufferLength);for(let i=0;i<history.length;i++)dsp.buffer[(historyStart+i)%bufferLength]=history[i];return dsp;
   }
+  setPaused(paused,time){
+    if(paused&&!this.paused)this.pausedAt=time;
+    if(!paused&&this.paused)this.origin+=time-this.pausedAt;
+    this.paused=paused;
+  }
   next(input,time){
+    if(this.paused)return 0;
     const {filter,delay}=this.state,c=this.current,s=this.smoothing;
     const drive=this.state.drive;
     if(drive.enabled||this.driveWet>1e-6){

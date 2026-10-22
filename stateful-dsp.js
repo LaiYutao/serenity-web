@@ -7,9 +7,12 @@ export class GainState {
 export class BufferVoice {
   constructor(samples=new Float32Array(),position=0){this.samples=samples;this.position=position;this.active=false;this.startFrame=0;this.stopFrame=Infinity;}
   next(frame){
-    if(frame<this.startFrame||frame>=this.stopFrame||!this.samples.length)return 0;
+    if(this.paused||frame<this.startFrame||frame>=this.stopFrame||!this.samples.length){this.left=0;this.right=0;return 0;}
     this.active=true;const n=this.samples.length,p=((this.position%n)+n)%n,i=Math.floor(p),fraction=p-i;
-    const value=this.samples[i]*(1-fraction)+this.samples[(i+1)%n]*fraction;this.position=p+1;return value;
+    const value=this.samples[i]*(1-fraction)+this.samples[(i+1)%n]*fraction;
+    this.left=this.channels?this.channels[0][i]*(1-fraction)+this.channels[0][(i+1)%n]*fraction:value;
+    this.right=this.channels?this.channels[1][i]*(1-fraction)+this.channels[1][(i+1)%n]*fraction:value;
+    this.position=p+1;return value;
   }
 }
 export class SnapshotCompressor {
@@ -24,6 +27,13 @@ export class SnapshotCompressor {
     this.gain+=(target-this.gain)*(1-Math.exp(-1/(this.rate*constant)));
     const delayed=this.buffer[this.cursor];this.buffer[this.cursor]=input;this.cursor=(this.cursor+1)%this.buffer.length;
     return delayed*this.gain;
+  }
+  nextStereo(left,right){
+    this.leftBuffer??=this.buffer.slice();this.rightBuffer??=this.buffer.slice();
+    const index=this.cursor,l=this.leftBuffer[index],r=this.rightBuffer[index];
+    this.leftBuffer[index]=left;this.rightBuffer[index]=right;
+    this.next(Math.max(Math.abs(left),Math.abs(right)));
+    this.left=l*this.gain;this.right=r*this.gain;
   }
 }
 export function cloneState(value){

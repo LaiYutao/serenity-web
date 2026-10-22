@@ -32,8 +32,8 @@ export async function fieldRecallElapsed(sound,track){
     const ctx=sound.context,frame=Math.ceil((ctx.currentTime+.03)*ctx.sampleRate/128)*128;
     const snapshot=await sound.snapshotContinuous([track.source.slot],frame);
     const voice=snapshot.tracks[0]?.state;
-    if(voice?.profile)return voice.profile.elapsed+Math.max(0,ctx.currentTime-snapshot.frame/ctx.sampleRate)*(voice.rate??1);
+    if(voice?.profile)return voice.profile.elapsed+(voice.paused?0:Math.max(0,ctx.currentTime-snapshot.frame/ctx.sampleRate)*(voice.rate??1));
   }
-  const duration=track.buffer.duration,position=((sound.context.currentTime-track.startedAt)%duration+duration)%duration;
+  const duration=track.buffer.duration,position=track.paused?track.pausePosition:((sound.context.currentTime-track.startedAt)%duration+duration)%duration;
   return position/duration*(track.baseDuration??duration);
 }

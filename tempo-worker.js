@@ -1,7 +1,7 @@
-import { renderTrackTempo } from './track-tempo-dsp.js';
+import { renderTrackAudio } from './track-tempo-dsp.js';
 self.onmessage=({data})=>{
   try{
-    const samples=renderTrackTempo(data);
-    self.postMessage({samples},[samples.buffer]);
+    const {samples,channels}=renderTrackAudio(data);
+    self.postMessage({samples,channels},[samples.buffer,...(channels?.map(c=>c.buffer)??[])]);
   }catch(error){self.postMessage({error:error.message});}
 };

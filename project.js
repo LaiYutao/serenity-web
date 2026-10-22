@@ -1,5 +1,6 @@
 import { FX_PARAMETERS } from './effects-dsp.js';
 import { trackTempo } from './track-tempo.js';
+import { bufferChannels, monoMix } from './stereo.js';
 // Self-contained binary archive: a small JSON manifest followed by typed-array data.
 // No audio re-encoding: original and processed PCM remain lossless and editable.
 const MAGIC='SRNTY001', LIMIT=768*1024*1024;
@@ -69,10 +70,14 @@ export function validateProject(p){
   check(Array.isArray(p.tracks)&&p.tracks.length<=16);
   for(const t of p.tracks){
     for(const key of ['original','samples','pitchSamples'])check(t[key] instanceof Float32Array&&t[key].length>0&&t[key].length<=p.sampleRate*(key==='original'?1200:19200)&&t[key].every(finite));
+    for(const [key,base] of [['originalChannels','original'],['channels','samples'],['pitchChannels','pitchSamples']]){
+      if(t[key]!==undefined)check(Array.isArray(t[key])&&t[key].length===2&&t[key].every(c=>c instanceof Float32Array&&c.length===t[base].length&&c.every(finite)));
+    }
     const tempo=trackTempo(t);
     check((t.normalSpeed===undefined||within(t.normalSpeed,.25,4))&&(t.stretchSpeed===undefined||within(t.stretchSpeed,.25,4)));
     check(within(tempo.normal,.25,4)&&within(tempo.stretch,.25,4)&&within(t.speed,.0625,16)&&Math.abs(t.speed-tempo.rate)<1e-9);
     check(within(t.position,0,t.samples.length/p.sampleRate+.01)&&['normal','stretch'].includes(t.speedMode)&&within(t.volume,0,2));
+    check(t.paused===undefined||typeof t.paused==='boolean');
     check(typeof t.muted==='boolean'&&typeof t.solo==='boolean'&&within(t.baseDuration,0.001,1200));
     check(t.settings&&['start','end'].every(k=>within(t.settings[k],0,1))&&['lowPitch','highPitch'].every(k=>within(t.settings[k],0,127)));
     check(['original','sine','triangle','sawtooth','square','pluck','bubble','electric','recording'].includes(t.waveform));
@@ -85,6 +90,9 @@ export function validateProject(p){
     check([1,2,4,8].includes(t.fx.filter.repeats)&&[0,.5,.25,.125,.0625].includes(t.fx.delay.sync));
     check(typeof t.continuous==='boolean');
     const map=t.pitchMap;check(map&&['recording','average','cluster'].includes(map.mode)&&Number.isInteger(map.frames)&&within(map.frames,1,24000));
+    const pansValid=(values,length)=>values?.length===length&&Array.from(values).every(v=>within(v,-1,1));
+    if(map.pans!==undefined)check(Array.isArray(map.pans)&&map.pans.length===map.frames&&map.pans.every(row=>pansValid(row,12)));
+    if(map.panFrames!==undefined)check(pansValid(map.panFrames,map.frames));
     if(map.mode==='recording'){
       check(Number.isInteger(map.lowNote)&&Number.isInteger(map.highNote)&&within(map.lowNote,0,127)&&within(map.highNote,map.lowNote,127));
       check(Array.isArray(map.levels)&&map.levels.length===map.frames&&map.levels.every(row=>row.length===map.highNote-map.lowNote+1&&Array.from(row).every(finite)));
@@ -94,7 +102,9 @@ export function validateProject(p){
     }
     if(t.continuous)check(t.voice&&t.voice.profile&&within(t.voice.profile.duration,.001,1200)&&finite(t.voice.profile.elapsed)&&finite(t.voice.profile.position)&&within(t.voice.rate,.01,17)&&Array.isArray(t.voice.profile.weights)&&t.voice.profile.weights.length>0);
     if(t.continuous){
-      const v=t.voice;check(within(v.profile.position,0,v.profile.duration)&&within(v.profile.elapsed,0,1e12));
+      const v=t.voice;check((v.paused===undefined||typeof v.paused==='boolean')&&!!v.paused===!!t.paused);check(within(v.profile.position,0,v.profile.duration)&&within(v.profile.elapsed,0,1e12));
+      if(v.profile.panFrames!==undefined)check(pansValid(v.profile.panFrames,v.profile.frequencies?.length));
+      if(v.profile.pans!==undefined)check(Array.isArray(v.profile.pans)&&v.profile.pans.length===v.profile.weights.length&&v.profile.pans.every(row=>pansValid(row,12)));
       check(v.profile.lookupOffset===undefined||finite(v.profile.lookupOffset));
       check(v.profile.loopDuration===undefined||within(v.profile.loopDuration,.001,1200));
       check(v.profile.introDuration===undefined||within(v.profile.introDuration,0,1200));
@@ -120,10 +130,11 @@ export async function captureProjectTracks(sound,tracks,{frozen=false}={}){
     const voice=t.continuous?structuredClone(frozen?t.projectVoice:voices.tracks.find(v=>v.slot===t.source.slot).state):null;
     const tempo=trackTempo(t),normal=t.appliedNormalSpeed??tempo.normal,stretch=t.appliedStretchSpeed??tempo.stretch;
     if(voice){voice.settings={...t.settings};voice.rate=t.baseDuration/t.buffer.duration;voice.pitchSpeed=normal;}
-    const duration=t.buffer.duration,position=t.continuous?voice.profile.position/voice.rate:frozen?((ctx.currentTime-t.startedAt)%duration+duration)%duration:((buffers[i].state.position/t.buffer.sampleRate)%duration+duration)%duration;
-    return {original:t.original,samples:t.buffer.getChannelData(0).slice(),pitchSamples:t.pitchSamples,pitchKey:t.pitchKey,
+    const duration=t.buffer.duration,position=t.continuous?voice.profile.position/voice.rate:frozen?(t.paused?t.pausePosition:((ctx.currentTime-t.startedAt)%duration+duration)%duration):((buffers[i].state.position/t.buffer.sampleRate)%duration+duration)%duration;
+    const channels=bufferChannels(t.buffer);
+    return {original:t.original,originalChannels:t.originalChannels,channels,samples:channels?monoMix(channels):t.buffer.getChannelData(0).slice(),pitchSamples:t.pitchSamples,pitchChannels:t.pitchChannels,pitchKey:t.pitchKey,
       settings:{...t.settings},speed:normal*stretch,normalSpeed:normal,stretchSpeed:stretch,speedMode:t.speedMode??'stretch',baseDuration:t.baseDuration,waveform:t.waveform,
-      continuous:t.continuous,volume:t.volume,muted:t.muted,solo:t.solo,position,pitchMap:t.pitchMap,pitchCorrection:t.pitchCorrection,
+      continuous:t.continuous,paused:!!t.paused,volume:t.volume,muted:t.muted,solo:t.solo,position,pitchMap:t.pitchMap,pitchCorrection:t.pitchCorrection,
       fx:structuredClone(t.fx),fieldScene:t.fieldScene,voice};
   })};
 }

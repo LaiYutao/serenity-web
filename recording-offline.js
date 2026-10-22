@@ -1,5 +1,6 @@
 import { planCycleExport } from './recording-export.js';
 import { loopGain } from './loops.js';
+import { bufferChannels, monoMix } from './stereo.js';
 export { OfflineTrackMix, renderOffline } from './recording-offline-dsp.js';
 
 export async function snapshotCycle(sound,tracks,anchorId){
@@ -23,7 +24,8 @@ export async function snapshotCycle(sound,tracks,anchorId){
   if(responses.some(response=>response.frame!==frame))throw new Error('exportSnapshotMismatch');
   const plan=planCycleExport(tracks,anchorId,rate,frame/rate);
   const captured=entries.map(({track,source,effects,gain})=>{
-    const voice=track.continuous?continuous.tracks.find(item=>item.slot===track.source.slot):{kind:'buffer',state:{...source.state,samples:track.buffer.getChannelData(0).slice()}};
+    const channels=track.continuous?undefined:bufferChannels(track.buffer);
+    const voice=track.continuous?continuous.tracks.find(item=>item.slot===track.source.slot):{kind:'buffer',state:{...source.state,samples:channels?monoMix(channels):track.buffer.getChannelData(0).slice(),channels}};
     if(!voice?.state)throw new Error('exportSnapshotMismatch');
     return {kind:voice.kind,voice:voice.state,effects:effects.state,gain:gain.state};
   });
@@ -34,7 +36,7 @@ export async function snapshotCycle(sound,tracks,anchorId){
   const normalized=((position%length)+length)%length;
   const remaining=(length-normalized)/(anchor.kind==='buffer'?rate:anchor.voice.rate??1);
   const startFrame=frame+Math.max(1,Math.round(remaining*rate));plan.when=startFrame/rate;
-  return {sampleRate:rate,frame,startFrame,frames:plan.frames,master:master.state,tracks:captured,plan};
+  return {stereo:true,sampleRate:rate,frame,startFrame,frames:plan.frames,master:master.state,tracks:captured,plan};
 }
 
 export function startOfflineRender(snapshot,onProgress=()=>{}){
@@ -44,7 +46,7 @@ export function startOfflineRender(snapshot,onProgress=()=>{}){
     reject=rejectPromise;
     worker.onmessage=({data})=>{
       if(data.type==='progress'){onProgress(data.value);return;}
-      worker.terminate();data.error?rejectPromise(new Error(data.error)):resolve({samples:data.samples,sampleRate:snapshot.sampleRate});
+      worker.terminate();data.error?rejectPromise(new Error(data.error)):resolve({samples:data.samples,channels:data.channels,sampleRate:snapshot.sampleRate});
     };
     worker.onerror=()=>{worker.terminate();rejectPromise(new Error('exportFailed'));};
     worker.postMessage(snapshot);

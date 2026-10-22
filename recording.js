@@ -12,7 +12,7 @@ export class LiveRecording{
     await this.sound.start();const ctx=this.sound.context;
     this.sound.recordModule??=ctx.audioWorklet.addModule(new URL('./recorder-worklet.js',import.meta.url));
     await this.sound.recordModule;
-    this.node=new AudioWorkletNode(ctx,'live-pcm-recorder',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1],channelCount:1,channelCountMode:'explicit'});
+    this.node=new AudioWorkletNode(ctx,'live-pcm-recorder',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2],channelCount:2,channelCountMode:'explicit'});
     this.silent=ctx.createGain();this.silent.gain.value=0;
     this.node.connect(this.silent).connect(ctx.destination);
     // Tap the live field only, upstream of the master bus that also contains saved loops.
@@ -20,7 +20,7 @@ export class LiveRecording{
     await new Promise(resolve=>{
       this.node.port.onmessage=({data})=>{
         if(data.type==='started'){this.startedAt=data.time;resolve();}
-        else if(data.type==='chunk')this.chunks.push(data.samples);
+        else if(data.type==='chunk'){this.chunks.push(data.samples);if(data.channels){this.channelChunks??=[[],[]];data.channels.forEach((c,i)=>this.channelChunks[i].push(c));}}
         else if(data.type==='done')this.finished?.();
       };
       this.node.port.postMessage('start');
@@ -31,6 +31,7 @@ export class LiveRecording{
     this.sound.live.disconnect(this.node);this.node.disconnect();this.silent.disconnect();this.node.port.close();
     const samples=joinChunks(this.chunks);this.chunks=[];
     if(samples.length<this.sound.context.sampleRate*.5)throw new Error('recordEmpty');
-    return softenLoopEdges(samples,this.sound.context.sampleRate);
+    const mono=softenLoopEdges(samples,this.sound.context.sampleRate);
+    return this.channelChunks?{samples:mono,channels:this.channelChunks.map(chunks=>softenLoopEdges(joinChunks(chunks),this.sound.context.sampleRate))}:mono;
   }
 }

@@ -38,25 +38,39 @@ npm test
 | M | 静音 |
 | O | 录入；直录时再次按下停止 |
 | P / 空格 | 暂停 / 继续实时场，已有音轨继续播放 |
+| Shift+P | 暂停 / 继续当前选中音轨 |
+| Shift+O | 开始 / 停止单轨重录；已有单轨录制时结束该次录制 |
 | R | 清空 |
 | X | 停止并回到开始页 |
 | Esc | 退出滚轮控制；未选中控件时结束框选 |
 
 单击滑条或旋钮即可选中，用橙色描边提示；鼠标移开后仍可用滚轮调节。按住任意一侧 Shift 可再慢十倍，整数或固定档位参数会累计到有效步长后变化。点击其他位置或按 Esc 退出，恢复页面滚动。单击滑条只选中，不会跳动把手；按住拖动仍直接调节，不显示选中框。旋钮双击恢复默认值，键盘方向键也可调整。
 
+## 默认立体声
+
+声音沿用原来的音高、节奏与音色，根据每种音在画面中的横向分布形成左右声像。取声框以所有有效选区共同覆盖的左右边界为参考，重叠区域只计一次；最边缘也保留另一侧的声音，40 ms 平滑过渡，不增加控件。左右对称的场自然居中。微分音保留同一个加权音高，只移动其整体声像。
+
+叠场、直录、单轨重录、效果器、变速、工程存档和 WAV 导出均保留两个声道；Stretch 使用左右共用的粒子对齐，不独立拉伸两侧。旧工程与旧音轨继续按原有的居中单声道播放。建议戴耳机试听；这不是额外的混响或空间效果，不需要启用开关。
+
+Default stereo follows the horizontal distribution of the existing notes without changing their pitch or rhythm. Listening regions share one horizontal reference; overlaps count once. Both ears retain signal, with 40 ms position smoothing and no additional controls. Symmetric fields stay centred. Microtones retain their original weighted pitch and move as one voice. Captures, per-track recording, effects, tempo edits, project files and WAV exports preserve stereo; old mono tracks remain centred.
+
 ## 音轨与效果器
 
 - 「叠场」保存当前场与取声选区的独立声音演变；「直录」记录当前画面的实时声音，可以边录边调整参数。录入不包含已有音轨。
 - 下方每页显示三轨。点击音轨，在右侧调整静音、独听、音量、时间遮罩和音高范围。音量 100 为原响度，可调至 200。
+- 先单击选中音轨，再双击已经选中的黑色长条可复制；未选中时双击只会选中。副本插在原轨后，保留立体声、声音源、Normal/Stretch、遮罩、音量、M/S、四组效果和可唤回场；按音频时钟补偿复制耗时，连同振荡相位与效果尾音对齐，之后独立编辑。复制同样受 16 轨上限限制。
+- M、S 右侧的播放／暂停键只控制当前选中音轨，冻结播放位置与效果处理，继续时从原处接上；不影响实时场和其他轨。M 静音时仍继续播放。暂停状态随工程保存，复制暂停轨也保持暂停；循环导出排除暂停轨。Shift+P 控制单轨播放，Shift+O 控制单轨重录，原有 P/O 不变。
 - 每条音轨编号右侧的小圆点可单独录制该轨：点一下开始，再点一下停止，生成一条新的直录音轨。录入包含本轨效果、遮罩、Normal/Stretch、音量和静音的实际声音变化，排除实时场、其他音轨及总输出音量，也不受其他轨 Solo 影响。原轨继续独立播放；新轨不带场唤回，最多录制 10 分钟后自动生成。录制及处理期间不能删除源轨或保存／打开工程。
 - 新录入的叠场音轨在秒数与循环标识之间有一个实心三角形。单击可唤回录入时的场、取声框、发声模式及波形，替换当前场；已有音轨继续独立播放，后加的音轨速度、遮罩和效果不会写回场。直录音轨不提供此功能。
 - 每轨的 Normal 与 Stretch 各自记住 0.25–4× 的数值，并始终同时生效。Normal 同时改变速度和音高，Stretch 在此基础上只改变速度；按钮只选择正在编辑的参数，切换不改变声音或播放位置。最终速度为两者相乘，例如 Normal 2×、Stretch 0.5× 会保持原节奏、音高升高八度。工程文件保留两个数值；直录在极端倍率下可能有时间伸缩的音色变化。
-- Filter 提供 Cutoff、Reso、Env Mod、Decay；Delay 提供 Time、Feedback、Mix、Tone；Fade 提供 In Time、In Curve、Out Time、Out Curve；Drive 提供 Drive、Fuzz、Tone、Mix。四组独立保存且可以同时开启，切换标签只切换控制页。调整旋钮会启用当前组，电源键旁通当前组。
+- 标签按 Filter / Drive / Delay / Fade 排列。Filter 提供 Cutoff、Reso、Env Mod、Decay；Drive 提供 Drive、Fuzz、Tone、Mix；Delay 提供 Time、Feedback、Mix、Tone；Fade 提供 In Time、In Curve、Out Time、Out Curve。四组独立保存且可以同时开启，切换标签只切换控制页。调整旋钮会启用当前组，电源键旁通当前组。
 - Drive 位于 Filter 之前：Drive 调节失真强度，Fuzz 从柔和饱和过渡到更硬、更毛躁的削波，Tone 调节明暗，Mix 混合原声与效果声。默认关闭，调整旋钮会开启；工程保存、实时与循环导出均包含此效果。
 - Fade 每个音轨周期从零渐入、向零渐出。Time 按周期比例保存，显示为实际时长，变速后跟随周期；Curve 的 Lin 为线性，正负值连续改变弯曲程度。谱图橙线显示启用的包络。Fade 不裁剪、不拉伸音轨，也不改变循环长度和 Mask；它同时作用于本轨干声与回声。两端渐变重叠时会平滑相乘，中间音量也可能降低。
 - 上方速度控制实时画面及对应声音。负速度反转当前波场的演变方向，不撤销场源操作，也不影响已有音轨。
 - 「启动 / 暂停」只控制实时画面与其声音；已录音轨继续播放。
 - 按 Record 后，继续演奏或直录前，重新点击上方「十二音」或「微分音」发声模式。
+
+Select a track first, then double-click its selected row to duplicate it. An unselected double-click only selects. Copies retain stereo, editable settings and field recall, with sample-clock compensation for phase and effect-tail alignment. The compact play/pause key after S freezes just that track; M keeps its playhead moving silently. **Shift+P** controls selected-track playback; **Shift+O** starts/stops per-track recording. Paused states survive project saves and duplication; full-cycle export excludes paused tracks.
 
 ## 音频导出
 
@@ -65,7 +79,7 @@ npm test
 - **实时导出**：点击开始收录当前听到的混音，包括实时场、已有音轨及演奏中的参数变化；再点下载键停止并下载，最长 10 分钟。
 - **循环导出**：选择起点音轨，复制当前音频状态，离线计算从它下一轮起点开始的共同周期。只导出已有音轨，保留开始时的速度、音量、遮罩和 Drive / Filter / Delay / Fade，无需等待音乐正常播完。计算期间锁定音轨编辑；再点下载键会取消计算，不下载半成品。
 
-循环导出计算全部分页中的可听音轨。共同周期超过 10 分钟时，面板明确标注截断，导出前 10 分钟音频，文件名包含 `truncated`。微分音载波与效果尾音不保证首尾无缝。音轨只保留在当前页面；WAV 保存的是声音，不能还原可编辑项目，刷新或关闭前应先导出。
+循环导出计算全部分页中的可听音轨。共同周期超过 10 分钟时，面板明确标注截断，导出前 10 分钟音频，文件名包含 `truncated`。微分音载波与效果尾音不保证首尾无缝。循环导出不包含暂停轨。两种导出都保留左右声道。WAV 保存的是声音，不能还原可编辑项目；刷新或关闭前应使用「保存工程」保留现场，需要分享声音时再导出 WAV。
 
 ## 与原作的对应及差异
 

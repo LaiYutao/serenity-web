@@ -1,13 +1,14 @@
 // Circular, waveform-aligned overlap-add. Samples inside each grain are never
 // resampled: only the spacing of grains changes, preserving their pitch.
-export function stretchRecording(input,sampleRate,rate=1){
+export function stretchRecording(input,sampleRate,rate=1,channels){
   if(!Number.isFinite(rate)||rate<.25||rate>4)throw new RangeError('Invalid track speed');
-  if(rate===1)return input.slice();
+  if(rate===1)return channels?{samples:input.slice(),channels:channels.map(c=>c.slice())}:input.slice();
   const size=input.length,length=Math.max(1,Math.round(size/rate));
-  if(!size)return new Float32Array();
+  if(!size)return channels?{samples:new Float32Array(),channels:channels.map(()=>new Float32Array())}:new Float32Array();
   const frame=Math.max(32,Math.round(sampleRate*.04)),hop=Math.max(8,Math.floor(frame/4));
   const grains=Math.max(1,Math.ceil(length/hop)),search=Math.max(4,Math.round(sampleRate*.006));
   const result=new Float32Array(length),weights=new Float32Array(length);
+  const stereo=channels?.map(()=>new Float32Array(length));
   const wrap=i=>((i%size)+size)%size,at=i=>{const n=Math.floor(i),f=i-n;return input[wrap(n)]*(1-f)+input[wrap(n+1)]*f;};
   const window=Float32Array.from({length:frame},(_,i)=>.5-.5*Math.cos(2*Math.PI*(i+.5)/frame));
   let previous=0,previousOut=0;
@@ -31,11 +32,14 @@ export function stretchRecording(input,sampleRate,rate=1){
       const left=score(start-1),right=score(start+1),curve=left-2*best+right;
       if(curve<0)start+=Math.max(-.5,Math.min(.5,.5*(left-right)/curve));
     }
-    for(let j=0;j<frame;j++){const i=(out+j)%length,w=window[j];result[i]+=at(start+j)*w;weights[i]+=w;}
+    for(let j=0;j<frame;j++){
+      const i=(out+j)%length,w=window[j];result[i]+=at(start+j)*w;weights[i]+=w;
+      if(stereo){const position=start+j,k=Math.floor(position),f=position-k;for(let c=0;c<stereo.length;c++)stereo[c][i]+=(channels[c][wrap(k)]*(1-f)+channels[c][wrap(k+1)]*f)*w;}
+    }
     previous=start;previousOut=out;
   }
-  for(let i=0;i<length;i++)result[i]/=Math.max(1e-8,weights[i]);
-  return result;
+  for(let i=0;i<length;i++){const weight=Math.max(1e-8,weights[i]);result[i]/=weight;if(stereo)for(const c of stereo)c[i]/=weight;}
+  return stereo?{samples:result,channels:stereo}:result;
 }
 
 // Ordinary playback-rate change: duration and pitch change together.

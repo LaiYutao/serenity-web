@@ -1,18 +1,22 @@
-import { GainState, BufferVoice, SnapshotCompressor } from './stateful-dsp.js';
+import { GainState, BufferVoice, SnapshotCompressor, restoreState } from './stateful-dsp.js';
 class SnapshotProcessor extends AudioWorkletProcessor {
-  constructor(){super();this.requests=[];this.alive=true;}
+  constructor(){super();this.requests=[];this.restores=[];this.pauses=[];this.alive=true;}
   capture(){
+    this.restores=this.restores.filter(event=>{if(currentFrame<event.frame)return true;this.restore(event.state);return false;});
+    if(this.voice)this.pauseAt(currentFrame);
     this.requests=this.requests.filter(request=>{
       if(currentFrame<request.frame)return true;
       this.port.postMessage({type:'snapshot',id:request.id,frame:currentFrame,state:this.snapshot()});return false;
     });
   }
-  receive(data){if(data.type==='snapshot'){this.requests.push(data);return true;}if(data.type==='dispose'){this.alive=false;return true;}return false;}
+  pauseAt(frame){while(this.pauses.length&&this.pauses[0].frame<=frame)this.voice.paused=this.pauses.shift().paused;}
+  receive(data){if(data.type==='restore'){this.restores.push({...data,frame:data.frame??currentFrame});return true;}if(data.type==='pause'){this.pauses.push(data);return true;}if(data.type==='snapshot'){this.requests.push(data);return true;}if(data.type==='dispose'){this.alive=false;return true;}return false;}
 }
 class StatefulGain extends SnapshotProcessor {
   constructor(){super();this.gain=new GainState(1);this.port.onmessage=({data})=>{if(this.receive(data))return;if(data.type==='gain')this.gain.set(data.value,data.constant);};}
   snapshot(){return {...this.gain};}
-  process(inputs,outputs){this.capture();const out=outputs[0][0],input=inputs[0]?.[0];for(let i=0;i<out.length;i++)out[i]=(input?.[i]??0)*this.gain.next(sampleRate);return this.alive;}
+  restore(state){this.gain=restoreState(GainState,state);}
+  process(inputs,outputs){this.capture();const out=outputs[0][0];for(let i=0;i<out.length;i++){const gain=this.gain.next(sampleRate);for(let c=0;c<outputs[0].length;c++)outputs[0][c][i]=(inputs[0]?.[c]?.[i]??inputs[0]?.[0]?.[i]??0)*gain;}return this.alive;}
 }
 class StatefulBuffer extends SnapshotProcessor {
   constructor(){
@@ -20,16 +24,17 @@ class StatefulBuffer extends SnapshotProcessor {
     this.port.onmessage=({data})=>{
       if(this.receive(data))return;
       if(data.type==='start'){
-        this.voice=new BufferVoice(data.samples,data.offset*sampleRate);this.voice.startFrame=Math.round(data.when*sampleRate);
+        this.voice=new BufferVoice(data.samples,data.offset*sampleRate);this.voice.channels=data.channels;this.voice.startFrame=Math.round(data.when*sampleRate);
         if(currentFrame>this.voice.startFrame)this.voice.position+=currentFrame-this.voice.startFrame;
         this.started=true;
       }else if(data.type==='stop')this.voice.stopFrame=Math.round(data.when*sampleRate);
     };
   }
-  snapshot(){const {samples,...state}=this.voice;return state;}
+  snapshot(){const {samples,channels,...state}=this.voice;return state;}
+  restore(state){this.voice=restoreState(BufferVoice,state);this.started=true;}
   process(_inputs,outputs){
     this.capture();const out=outputs[0][0];
-    for(let i=0;i<out.length;i++)out[i]=this.voice.next(currentFrame+i);
+    for(let i=0;i<out.length;i++){this.pauseAt(currentFrame+i);this.voice.next(currentFrame+i);out[i]=this.voice.left;if(outputs[0][1])outputs[0][1][i]=this.voice.right;}
     if(this.started&&currentFrame+out.length>=this.voice.stopFrame){this.port.postMessage({type:'ended'});return false;}
     return true;
   }
@@ -44,8 +49,8 @@ class StatefulMaster extends SnapshotProcessor {
     this.capture();const mixed=inputs[0]?.[0],tracks=inputs[1]?.[0],out=outputs[0][0],reference=outputs[1]?.[0];
     for(let i=0;i<out.length;i++){
       const gain=this.gain.next(sampleRate);
-      out[i]=this.main.next(Math.fround((mixed?.[i]??0)*gain));
-      const value=this.tracks.next(Math.fround((tracks?.[i]??0)*gain));if(reference)reference[i]=value;
+      this.main.nextStereo(Math.fround((mixed?.[i]??0)*gain),Math.fround((inputs[0]?.[1]?.[i]??mixed?.[i]??0)*gain));out[i]=this.main.left;if(outputs[0][1])outputs[0][1][i]=this.main.right;
+      this.tracks.nextStereo(Math.fround((tracks?.[i]??0)*gain),Math.fround((inputs[1]?.[1]?.[i]??tracks?.[i]??0)*gain));if(reference)reference[i]=this.tracks.left;if(outputs[1]?.[1])outputs[1][1][i]=this.tracks.right;
     }
     return true;
   }
@@ -54,7 +59,7 @@ class StatefulTrackMix extends AudioWorkletProcessor {
   process(inputs,outputs){
     const out=outputs[0][0];
     for(let i=0;i<out.length;i++){
-      let sum=0;for(let slot=0;slot<inputs.length;slot++)sum=Math.fround(sum+(inputs[slot]?.[0]?.[i]??0));out[i]=sum;
+      for(let c=0;c<outputs[0].length;c++){let sum=0;for(let slot=0;slot<inputs.length;slot++)sum=Math.fround(sum+(inputs[slot]?.[c]?.[i]??inputs[slot]?.[0]?.[i]??0));outputs[0][c][i]=sum;}
     }
     return true;
   }

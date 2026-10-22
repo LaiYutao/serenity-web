@@ -282,3 +282,9 @@ input[type=range]:focus:not(:focus-visible):not(.wheel-selected),.fx-knob:focus:
 .record-track[aria-pressed=true]::before{border-radius:0;opacity:1;animation:record-pulse 1s steps(2,end) infinite}
 .record-track:disabled::before{opacity:.25}
 .record-track[aria-pressed=true]:disabled::before{opacity:.7;animation:none}
+
+/* Four compact keys occupy the former three-key width. */
+.controls .selected-mix .key-bank{height:27px;padding:2px;gap:2px}
+.controls .selected-mix .key-bank button{width:22px;min-width:22px;height:23px;min-height:23px;padding:2px;font-size:11px;line-height:1}
+.selected-mix #edit-play svg,.selected-mix .icon{width:12px;height:12px;display:block;margin:auto}
+.selected-mix #edit-play[aria-pressed=true]::after{display:none}

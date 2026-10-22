@@ -1,4 +1,5 @@
 // The original Serenity field/height/music model, adapted to a regular JS grid.
+import { panAt } from './stereo.js';
 export const WIDTH = 240, HEIGHT = 150, STEP = 0.1, SPEED = 10;
 export const GLYPHS = ' .,:;*o%&#H$@';
 export const NOTES = [261.63,277.18,293.66,311.13,329.63,349.23,0,369.99,392,415.30,440,466.16,493.88];
@@ -19,10 +20,17 @@ export function selectionBounds(start, end, width=WIDTH, height=HEIGHT) {
   return { left:Math.min(x1,x2), top:Math.min(y1,y2), right:Math.max(x1,x2), bottom:Math.max(y1,y2) };
 }
 export function musicMapping(distribution) {
+  const panSums=distribution.panSums;distribution=distribution.counts??distribution;
   const total = distribution.reduce((a, b) => a + b, 0) || 1;
   const weights = new Float64Array(13);
   for (let i=0; i<NOTES.length; i++) if (NOTES[i]) weights[i] = distribution[i] / total;
-  return { weights, hertz: distribution.reduce((sum, count, i) => sum + count * NOTES[i], 0) / total };
+  const result={ weights, hertz: distribution.reduce((sum, count, i) => sum + count * NOTES[i], 0) / total };
+  if(panSums){
+    result.pans=Float64Array.from(distribution,(count,i)=>count?panSums[i]/count:0);
+    const audible=distribution.reduce((sum,count,i)=>sum+(NOTES[i]?count:0),0);
+    result.pan=audible?panSums.reduce((sum,value,i)=>sum+(NOTES[i]?value:0),0)/audible:0;
+  }
+  return result;
 }
 
 export class Field {
@@ -169,14 +177,17 @@ export class Simulation {
 }
 
 // Read intermediate field phases without changing propagation or the visible grid.
-export function sampleDistribution(sim,regions=[],offset=0){
-  if(!offset)return sim.distributionFor(regions);
-  const distribution=new Uint32Array(13),time=sim.time+offset;
+export function sampleDistribution(sim,regions=[],offset=0,spatial=false){
+  if(!offset&&!spatial)return sim.distributionFor(regions);
+  const distribution=new Uint32Array(13),time=sim.time+offset,panSums=spatial?new Float64Array(13):null;
+  const valid=regions.filter(r=>r.left<sim.width&&r.right>=0&&r.top<sim.height&&r.bottom>=0);
+  const left=regions.length?Math.max(0,Math.ceil(Math.min(...valid.map(r=>r.left)))):0,right=regions.length?Math.min(sim.width-1,Math.floor(Math.max(...valid.map(r=>r.right)))):sim.width-1;
   for(let i=0;i<sim.heights.length;i++){
     const x=i%sim.width,y=Math.floor(i/sim.width);
     if(regions.length&&!regions.some(r=>x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom))continue;
-    let height=0;for(const f of sim.fields)height+=f.amps[i]*Math.cos(TAU*f.direction*f.freqs[i]*time+f.phases[i]);
-    distribution[heightBin(height)]++;
+    let bin=sim.bins[i];
+    if(offset){let height=0;for(const f of sim.fields)height+=f.amps[i]*Math.cos(TAU*f.direction*f.freqs[i]*time+f.phases[i]);bin=heightBin(height);}
+    distribution[bin]++;if(panSums)panSums[bin]+=panAt(x,left,right);
   }
-  return distribution;
+  return spatial?{counts:distribution,panSums}:distribution;
 }
