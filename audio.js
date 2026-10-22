@@ -7,7 +7,7 @@ export function fieldSoundKey(sim,sound,regions){
   return JSON.stringify([sound.mode,sound.waveform,sound.speed,sound.stepRate??1,sim.direction,sim.width,sim.height,sim.fields.map(f=>[f.type,f.x,f.y,f.amplitude,f.frequency,f.revisionTime]),regions]);
 }
 export class SoundEngine {
-  constructor({sampleRate}={}) { this.sampleRate=sampleRate;this.context=null;this.muted=false;this.volume=.25;this.mode='cluster';this.running=false;this.waveform='original';this.speed=1;this.samplingMode='normal';this.stepRate=1;this.sampleClock=new SampleClock(); }
+  constructor({sampleRate}={}) { this.sampleRate=sampleRate;this.context=null;this.voices=[];this.muted=false;this.volume=.25;this.mode='cluster';this.running=false;this.waveform='original';this.speed=1;this.samplingMode='normal';this.stepRate=1;this.sampleClock=new SampleClock(); }
   start(){
     if(!this.starting)this.starting=this.initialize().catch(error=>{this.context?.close();this.context=null;throw error;}).finally(()=>{this.starting=null;});
     return this.starting;

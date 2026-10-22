@@ -4,6 +4,15 @@ import { SoundEngine,fieldSoundKey } from '../audio.js';
 import { Simulation } from '../simulation.js';
 import { ContinuousTone,LivePluckCluster } from '../continuous-dsp.js';
 
+test('waveform changes during asynchronous audio startup are retained until voices are ready',()=>{
+ const sound=new SoundEngine();sound.context={}; // AudioContext exists while worklet modules are still loading.
+ for(const type of ['bubble','electric','square']){
+  assert.doesNotThrow(()=>sound.setWaveform(type));assert.equal(sound.waveform,type);
+ }
+ const oscillator={type:'sine'};sound.voices=[{oscillator},null];
+ sound.setWaveform(sound.waveform);assert.equal(oscillator.type,'square');
+});
+
 function harness(waveform,mode){
  const sound=new SoundEngine(),messages=[],tone=new ContinuousTone(),cluster=new LivePluckCluster();
  sound.context={currentTime:0};sound.waveform=waveform;sound.mode=mode;sound.running=true;sound.stepRate=.25;
